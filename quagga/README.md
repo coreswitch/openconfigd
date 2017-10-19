@@ -1,10 +1,6 @@
-```
-$ mkdir -p ${GOPATH}/src/github.com/coreswitch
-$ cd ${GOPATH}/src/github.com/coreswitch
-$ git clone git@github.com:coreswitch/openconfigd.git
-$ cd openconfigd
-$ git checkout -b quagga origin/quagga
-```
+# quaggad
+
+`quaggad` is openconfigd configuration gateway to quagga.
 
 ```
 $ go get github.com/coreswitch/zebra/rib/ribd
