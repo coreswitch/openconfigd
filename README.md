@@ -1,10 +1,10 @@
-# OpenConfigd
+# openconfigd
 
-OpenConfigd is software which manages [OpenConfig](http://www.openconfig.net/)
+openconfigd is software which manages [OpenConfig](http://www.openconfig.net/)
 common data models for networking. It handles networking protocol configuration
 of switch, router, DNS, DHCP, NAT and Firewall.
 
-OpenConfigd reads YANG model definition then generate configuration schema from
+openconfigd reads YANG model definition then generate configuration schema from
 it.
 
 ### Install
@@ -75,9 +75,9 @@ $ openconfigd -y /usr/shared/yang:/opt/yang
 
 will search both `/usr/shared/yang` and `/opt/yang` directory.  Default YANG load path `$GOPATH/src/github.com/coreswitch/openconfigd/yang` is automatically added.
 
-### OpenConfigd scripting
+### openconfigd scripting
 
-OpenConfigd support CLI scripting. All operational and configuration mode
+openconfigd support CLI scripting. All operational and configuration mode
 commands can run from script.
 
 Here is an example:
