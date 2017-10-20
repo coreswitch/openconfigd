@@ -894,7 +894,5 @@ func (this *ConfigComponent) Stop() component.Component {
 	OspfVrfExit()
 	GobgpWanExit()
 
-	configActive = nil
-	configCandidate = nil
 	return this
 }
