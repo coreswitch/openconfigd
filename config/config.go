@@ -613,7 +613,7 @@ func mandatoryFindList(c *Config, e *yang.Entry, depth int) error {
 			}
 		}
 		// Couldn't find mandatory node.
-		return fmt.Errorf("Missing mandatory node %s under %s", e.Name, c.Name)
+		return fmt.Errorf("Mandatory node '%s' is necessary under %s.", e.Name, c.Name)
 	} else {
 		for _, cfg := range c.Keys {
 			err := mandatoryFindList(cfg, e, depth-1)
@@ -625,31 +625,31 @@ func mandatoryFindList(c *Config, e *yang.Entry, depth int) error {
 	return nil
 }
 
-func mandatoryFind(c *Config, e *yang.Entry) error {
-	if c.Entry.IsList() {
-		return mandatoryFindList(c, e, KeyLength(c.Entry))
-	}
-	return nil
-}
-
-func mandatoryCheck(c *Config) error {
-	fmt.Println("mandatoryCheck", c.Name)
-	e := c.Entry
-
-	if e == nil {
-		return nil
-	}
-
-	if e.Kind != yang.DirectoryEntry {
+func mandatoryCheck(c *Config, e *yang.Entry) error {
+	// Check list only.
+	if !e.IsList() {
 		return nil
 	}
 
 	for _, ent := range e.Dir {
-		if IsMandatory(ent) {
-			fmt.Println("XXX Mandatory")
-			err := mandatoryFind(c, ent)
-			if err != nil {
-				return err
+		if ent.IsList() {
+			// Need to check the List has mandatory leaf key.
+			for _, leaf := range ent.Dir {
+				if IsMandatory(leaf) && KeyIncludeValue(ent.Key, leaf.Name) {
+					err := mandatoryFindList(c, ent, KeyLength(c.Entry))
+					if err != nil {
+						return err
+					}
+				}
+			}
+		}
+		if ent.IsLeaf() {
+			// Need to check non key mandatory leaf.
+			if IsMandatory(ent) && !KeyIncludeValue(e.Key, ent.Name) {
+				err := mandatoryFindList(c, ent, KeyLength(c.Entry))
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -657,18 +657,20 @@ func mandatoryCheck(c *Config) error {
 }
 
 func (c *Config) MandatoryCheck() error {
-	err := mandatoryCheck(c)
-	if err != nil {
-		return err
+	if c.Entry != nil {
+		err := mandatoryCheck(c, c.Entry)
+		if err != nil {
+			return err
+		}
 	}
 	for _, k := range c.Keys {
-		err = k.MandatoryCheck()
+		err := k.MandatoryCheck()
 		if err != nil {
 			return err
 		}
 	}
 	for _, c := range c.Configs {
-		err = c.MandatoryCheck()
+		err := c.MandatoryCheck()
 		if err != nil {
 			return err
 		}

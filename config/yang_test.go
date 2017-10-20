@@ -640,3 +640,41 @@ func TestMandatoryMultiKey(t *testing.T) {
 	// jsonStr = config.JsonMarshal()
 	// fmt.Println(jsonStr)
 }
+
+func TestMandatoryNestKey(t *testing.T) {
+	// Load multiple key YANG.
+	entry, err := YangSetUp("test-mandatory.yang")
+	if err != nil {
+		t.Error("Parse error", err)
+		return
+	}
+
+	// Parse success test.
+	config := &Config{}
+	path := []string{"static", "route", "10.0.0.0/24", "nexthop", "10.0.0.1"}
+	ret, _, _, _ := Parse(path, entry, config, nil)
+	if ret != cmd.ParseSuccess {
+		t.Error("List parse failed for", path, "result", cmd.ParseResult2String(ret))
+	}
+	jsonStr = config.JsonMarshal()
+	fmt.Println(jsonStr)
+
+	err = config.MandatoryCheck()
+	if err != nil {
+		t.Error("Mandatory error should not happen", err)
+	}
+
+	path = []string{"static", "route", "10.0.0.0/24", "nexthop", "10.0.0.1"}
+	ret, _, _, _ = ParseDelete(path, config, nil)
+	if ret != cmd.ParseSuccess {
+		t.Error("Delete failed for", path, "result", cmd.ParseResult2String(ret))
+	}
+
+	jsonStr = config.JsonMarshal()
+	fmt.Println(jsonStr)
+
+	err = config.MandatoryCheck()
+	if err == nil {
+		t.Error("Mandatory error should happen")
+	}
+}
