@@ -50,10 +50,10 @@ ubuntu>
 
 ### Options
 
-`openconfigd` takes YANG module names as arguments.  When no YANG module is specified, default `coreswitch.yang` is used.  '.yang' saffix is optional.  Use can specify multiple YANG file.  So
+`openconfigd` takes YANG module names as arguments.  When no YANG module is specified, default `coreswitch.yang` is used.  '.yang' suffix is optional.  Use can specify multiple YANG file.  So
 
 ``` bash
-$ openconfig lagopus ietf-ip
+$ openconfigd lagopus ietf-ip
 ```
 
 will load both `lagopus.yang` and `ietf-ip.yang` modules.
@@ -62,7 +62,7 @@ There are several other options.
 
 *  -c, --config-file= active config file name (default: coreswitch.conf)
 *  -p, --config-dir=  config file directory (default: /usr/local/etc)
-*  -y, --yang-paths=  comma separated YANG load path directories
+*  -y, --yang-paths=  colon separated YANG load path directories
 *  -h, --help         Show this help message
 
 `-c` option specify active config file name.  `-p` option specify config file save directory.  When full path is specified to `-c` option's base directory overrides the `-p` option config file directory.
@@ -70,10 +70,10 @@ There are several other options.
 `-y` option specify YANG file load path.  Use can specify multiple YANG load path with colon separated list.
 
 ``` bash
-$ openconfig -y /usr/shared/yang:/opt/yang
+$ openconfigd -y /usr/shared/yang:/opt/yang
 ```
 
-will search both `/usr/shared/yang` and `/opt/yang` directory.  Default YANG laod path `$GOPATH/src/github.com/coreswitch/openconfigd/yang` is automatically added.
+will search both `/usr/shared/yang` and `/opt/yang` directory.  Default YANG load path `$GOPATH/src/github.com/coreswitch/openconfigd/yang` is automatically added.
 
 ### OpenConfigd scripting
 
