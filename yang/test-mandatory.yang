@@ -9,6 +9,9 @@ module test-mandatory {
   }
 
   container top {
+    leaf value {
+      type string;
+    }
     leaf mandatory {
       type string;
       mandatory true;
@@ -17,6 +20,9 @@ module test-mandatory {
 
   container top-presence {
     presence;
+    leaf value {
+      type string;
+    }
     leaf mandatory {
       type string;
       mandatory true;
