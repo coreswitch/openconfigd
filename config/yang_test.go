@@ -656,8 +656,8 @@ func TestMandatoryNestKey(t *testing.T) {
 	if ret != cmd.ParseSuccess {
 		t.Error("List parse failed for", path, "result", cmd.ParseResult2String(ret))
 	}
-	jsonStr = config.JsonMarshal()
-	fmt.Println(jsonStr)
+	// jsonStr = config.JsonMarshal()
+	// fmt.Println(jsonStr)
 
 	err = config.MandatoryCheck()
 	if err != nil {
@@ -670,11 +670,59 @@ func TestMandatoryNestKey(t *testing.T) {
 		t.Error("Delete failed for", path, "result", cmd.ParseResult2String(ret))
 	}
 
-	jsonStr = config.JsonMarshal()
-	fmt.Println(jsonStr)
+	// jsonStr = config.JsonMarshal()
+	// fmt.Println(jsonStr)
 
 	err = config.MandatoryCheck()
 	if err == nil {
 		t.Error("Mandatory error should happen")
+	}
+}
+
+func TestContainerMandatory(t *testing.T) {
+	// Load mandatory YANG.
+	entry, err := YangSetUp("test-mandatory.yang")
+	if err != nil {
+		t.Error("Parse error", err)
+		return
+	}
+
+	// Parse success test with missing mandatory.
+	config := &Config{}
+	path := []string{"top", "mandatory", "value"}
+	ret, _, _, _ := Parse(path, entry, config, nil)
+	if ret != cmd.ParseSuccess {
+		t.Error("List parse failed for", path, "result", cmd.ParseResult2String(ret))
+	}
+	err = config.MandatoryCheck()
+	if err != nil {
+		t.Error("Mandatory error", err)
+	}
+
+	path = []string{"top", "value", "node"}
+	ret, _, _, _ = Parse(path, entry, config, nil)
+	if ret != cmd.ParseSuccess {
+		t.Error("List parse failed for", path, "result", cmd.ParseResult2String(ret))
+	}
+	path = []string{"top", "mandatory", "value"}
+	ret, _, _, _ = ParseDelete(path, config, nil)
+	if ret != cmd.ParseSuccess {
+		t.Error("List parse failed for", path, "result", cmd.ParseResult2String(ret))
+	}
+	err = config.MandatoryCheck()
+	if err == nil {
+		t.Error("Mandatory error should occur")
+	}
+
+	// presence container check.
+	config = &Config{}
+	path = []string{"top-presence", "value", "node"}
+	ret, _, _, _ = Parse(path, entry, config, nil)
+	if ret != cmd.ParseSuccess {
+		t.Error("List parse failed for", path, "result", cmd.ParseResult2String(ret))
+	}
+	err = config.MandatoryCheck()
+	if err != nil {
+		t.Error("Mandatory should not occur for presence container", err)
 	}
 }

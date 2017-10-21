@@ -627,15 +627,22 @@ func mandatoryFindList(c *Config, e *yang.Entry, depth int) error {
 
 func mandatoryCheck(c *Config, e *yang.Entry) error {
 	// Check list only.
-	if !e.IsList() {
-		return nil
-	}
-
-	for _, ent := range e.Dir {
-		if ent.IsList() {
-			// Need to check the List has mandatory leaf key.
-			for _, leaf := range ent.Dir {
-				if IsMandatory(leaf) && KeyIncludeValue(ent.Key, leaf.Name) {
+	if e.IsList() {
+		for _, ent := range e.Dir {
+			if ent.IsList() {
+				// Need to check the List has mandatory leaf key.
+				for _, leaf := range ent.Dir {
+					if IsMandatory(leaf) && KeyIncludeValue(ent.Key, leaf.Name) {
+						err := mandatoryFindList(c, ent, KeyLength(c.Entry))
+						if err != nil {
+							return err
+						}
+					}
+				}
+			}
+			if ent.IsLeaf() {
+				// Need to check non key mandatory leaf.
+				if IsMandatory(ent) && !KeyIncludeValue(e.Key, ent.Name) {
 					err := mandatoryFindList(c, ent, KeyLength(c.Entry))
 					if err != nil {
 						return err
@@ -643,12 +650,15 @@ func mandatoryCheck(c *Config, e *yang.Entry) error {
 				}
 			}
 		}
-		if ent.IsLeaf() {
-			// Need to check non key mandatory leaf.
-			if IsMandatory(ent) && !KeyIncludeValue(e.Key, ent.Name) {
-				err := mandatoryFindList(c, ent, KeyLength(c.Entry))
-				if err != nil {
-					return err
+	}
+	if e.IsContainer() && !IsPresenceContainer(e) {
+		for _, ent := range e.Dir {
+			if ent.IsLeaf() {
+				if IsMandatory(ent) {
+					err := mandatoryFindList(c, ent, 0)
+					if err != nil {
+						return err
+					}
 				}
 			}
 		}
