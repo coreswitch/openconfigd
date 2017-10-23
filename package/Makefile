@@ -3,7 +3,7 @@
 ##
 PACKAGE_NAME:=openconfigd
 
-OPENCONFIGD_VERSION:=0.8.0
+OPENCONFIGD_VERSION:=0.8.1
 
 PACKAGE_VERSION:=$(OPENCONFIGD_VERSION)
 PACKAGE_LICENSE:=Apache License version 2.0
@@ -49,8 +49,8 @@ files: $(STAGING_DIR) $(STAGING_DIR)/etc $(STAGING_DIR)/etc/openconfigd
 	rsync -avz ../yang $(STAGING_DIR)/etc/openconfigd
 
 openconfigd: $(STAGING_DIR)/usr/bin
-	go get github.com/hash-set/openconfigd/openconfigd
-	go get github.com/hash-set/openconfigd/cli_command
+	go get github.com/coreswitch/openconfigd/openconfigd
+	go get github.com/coreswitch/openconfigd/cli_command
 	cp $(GOPATH)/bin/openconfigd $(STAGING_DIR)/usr/bin
 	cp $(GOPATH)/bin/cli_command $(STAGING_DIR)/usr/bin
 
