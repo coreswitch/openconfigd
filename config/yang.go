@@ -377,12 +377,40 @@ func CompChoice(ent *yang.Entry, comps cmd.CompSlice) cmd.CompSlice {
 	return comps
 }
 
+func IsCompDir(e *yang.Entry) bool {
+	if e == nil {
+		return false
+	}
+	if e.IsDir() {
+		if e.IsList() {
+			if len(e.Dir) > KeyLength(e) {
+				return true
+			}
+		} else {
+			if len(e.Dir) > 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func IsAdditive(e *yang.Entry) bool {
+	if e == nil {
+		return false
+	}
+	if e.IsList() && len(e.Key) > 0 {
+		return true
+	}
+	return false
+}
+
 func CompDir(ent *yang.Entry, comps cmd.CompSlice) cmd.CompSlice {
 	for _, e := range ent.Dir {
 		if e.IsChoice() {
 			comps = CompChoice(e, comps)
 		} else {
-			comps = append(comps, &cmd.Comp{Name: e.Name, Dir: e.IsDir()})
+			comps = append(comps, &cmd.Comp{Name: e.Name, Dir: IsCompDir(e), Additive: IsAdditive(e)})
 		}
 	}
 	return comps
@@ -404,7 +432,7 @@ func CompKey(ent *yang.Entry, index int) cmd.CompSlice {
 	comps := cmd.CompSlice{}
 	key := KeyEntry(ent, index)
 	if key != nil {
-		comps = append(comps, &cmd.Comp{Name: "<" + key.Name + ">"})
+		comps = append(comps, &cmd.Comp{Name: "<" + key.Name + ">", Dir: IsCompDir(ent), Additive: IsAdditive(ent)})
 	}
 	return comps
 }
@@ -415,7 +443,7 @@ func CompKeyMatched(ent *yang.Entry, comps cmd.CompSlice) cmd.CompSlice {
 			if e.IsChoice() {
 				comps = CompChoice(e, comps)
 			} else {
-				comps = append(comps, &cmd.Comp{Name: e.Name})
+				comps = append(comps, &cmd.Comp{Name: e.Name, Dir: IsCompDir(e), Additive: IsAdditive(e)})
 			}
 		}
 	}
