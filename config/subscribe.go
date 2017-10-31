@@ -349,7 +349,7 @@ func Commit() error {
 	for scanner.Scan() {
 		c := NewCommand(scanner.Text())
 		if c != nil {
-			fmt.Println("[cmd]Regsitering:", c.cmds)
+			fmt.Println("[cmd]Registering:", c.cmds)
 			entry = true
 			PathRegisterCommand(RootPath, c, false)
 		}
@@ -437,7 +437,7 @@ func UnregisterPath(p *Path) {
 }
 
 func SubscribeLocalAdd(path []string, json SubPathJsonCallback) {
-	fmt.Println("Lock:SubscribeLocalAdd")
+	fmt.Println("Lock:SubscribeLocalAdd", path)
 	SubscribeMutex.Lock()
 	defer SubscribeMutex.Unlock()
 

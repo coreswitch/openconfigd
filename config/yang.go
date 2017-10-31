@@ -882,7 +882,7 @@ func (this *YangComponent) Start() component.Component {
 	}
 
 	// Add local subscription.
-	//SubscribeLocalAdd([]string{"system"}, nil)
+	SubscribeLocalAdd([]string{"system"}, nil)
 	SubscribeLocalAdd([]string{"system", "ntp"}, ntp.Configure)
 	SubscribeLocalAdd([]string{"protocols"}, nil)
 	SubscribeLocalAdd([]string{"vrrp"}, VrrpJsonConfig)
