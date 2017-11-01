@@ -718,7 +718,7 @@ func CompValue(config *Config, comps cmd.CompSlice, index int) cmd.CompSlice {
 }
 
 func (c *Config) HasDir() bool {
-	return len(c.Configs) > 0 || len(c.Keys) > 0 || c.KeyConfig
+	return len(c.Configs) > 0 || len(c.Keys) > 0 || c.KeyConfig || c.Entry == nil
 }
 
 func ParseDelete(cmds []string, config *Config, s *YMatchState) (int, cmd.Callback, []interface{}, cmd.CompSlice) {
