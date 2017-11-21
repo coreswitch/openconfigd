@@ -911,11 +911,7 @@ func (this *ConfigComponent) Start() component.Component {
 
 // Config component stop method.
 func (this *ConfigComponent) Stop() component.Component {
-	fmt.Println("component config: stop")
-
-	// Clean up etcd config.
-	//EtcdVrfClean()
-	Commit()
+	DiscardConfigChange()
 	DhcpExitFunc()
 	VrrpServerStopAll()
 	RelayExitFunc()

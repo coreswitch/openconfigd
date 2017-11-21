@@ -368,8 +368,7 @@ func Commit() error {
 		sub.Commit()
 	}
 
-	copy := configCandidate.Copy(nil)
-	configActive = copy
+	configActive = configCandidate.Copy(nil)
 
 	if !zeroConfig {
 		RollbackRevisionIncrement()
@@ -379,6 +378,13 @@ func Commit() error {
 	fmt.Println("[cmd]Commit(): Done")
 
 	return nil
+}
+
+func DiscardConfigChange() {
+	SubscribeMutex.Lock()
+	defer SubscribeMutex.Unlock()
+
+	configCandidate = configActive.Copy(nil)
 }
 
 func SubscribeSync() bool {
