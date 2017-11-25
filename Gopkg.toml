@@ -1,0 +1,71 @@
+
+# Gopkg.toml example
+#
+# Refer to https://github.com/golang/dep/blob/master/docs/Gopkg.toml.md
+# for detailed Gopkg.toml documentation.
+#
+# required = ["github.com/user/thing/cmd/thing"]
+# ignored = ["github.com/user/project/pkgX", "bitbucket.org/user/project/pkgA/pkgY"]
+#
+# [[constraint]]
+#   name = "github.com/user/project"
+#   version = "1.0.0"
+#
+# [[constraint]]
+#   name = "github.com/user/project2"
+#   branch = "dev"
+#   source = "github.com/myfork/project2"
+#
+# [[override]]
+#  name = "github.com/x/y"
+#  version = "2.4.0"
+
+
+[[constraint]]
+  name = "github.com/coreos/etcd"
+  version = "3.2.7"
+
+[[constraint]]
+  name = "github.com/coreswitch/cmd"
+
+[[constraint]]
+  name = "github.com/coreswitch/component"
+  version = "1.0.0"
+
+[[constraint]]
+  name = "github.com/coreswitch/goyang"
+
+[[constraint]]
+  name = "github.com/coreswitch/log"
+
+[[constraint]]
+  name = "github.com/coreswitch/netutil"
+
+[[constraint]]
+  name = "github.com/coreswitch/process"
+
+[[constraint]]
+  name = "github.com/golang/protobuf"
+
+[[constraint]]
+  name = "github.com/jessevdk/go-flags"
+
+[[constraint]]
+  name = "github.com/mitchellh/mapstructure"
+
+[[constraint]]
+  name = "github.com/osrg/gobgp"
+  source = "git@github.com:hash-set/gobgp.git"
+
+[[constraint]]
+  name = "github.com/sirupsen/logrus"
+
+[[constraint]]
+  name = "github.com/twinj/uuid"
+
+[[constraint]]
+  name = "golang.org/x/net"
+
+[[constraint]]
+  name = "google.golang.org/grpc"
+  version = "1.2.1"
