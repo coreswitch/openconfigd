@@ -61,7 +61,11 @@ _cli_prompt_setup ()
     CLI_MODE_CHAR="#"
   fi
 
-  export PS1="$(hostname)${CLI_MODE_PROMPT}${CLI_MODE_CHAR}"
+  if [ -n $CLI_PROMPT ]; then
+    export PS1="${CLI_PROMPT}${CLI_MODE_PROMPT}${CLI_MODE_CHAR}"
+  else
+    export PS1="$(hostname)${CLI_MODE_PROMPT}${CLI_MODE_CHAR}"
+  fi
 }
 
 _cli_pager_setup ()
