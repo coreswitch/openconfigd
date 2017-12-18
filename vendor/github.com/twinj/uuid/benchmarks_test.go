@@ -1,15 +1,15 @@
 package uuid_test
 
 import (
-	. "github.com/twinj/uuid"
+	. "github.com/myesui/uuid"
 	"testing"
 )
 
-var name UniqueName = Name("www.example.com")
+var generator, _ = NewGenerator(nil)
 
 func BenchmarkNewV1(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		NewV1() // Sets up initial store on first run
+		generator.NewV1() // Sets up initial store on first run
 	}
 	b.StopTimer()
 	b.ReportAllocs()
@@ -17,7 +17,7 @@ func BenchmarkNewV1(b *testing.B) {
 
 func BenchmarkNewV2(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		NewV2(DomainGroup)
+		generator.NewV2(SystemIdGroup)
 	}
 	b.StopTimer()
 	b.ReportAllocs()
@@ -25,7 +25,7 @@ func BenchmarkNewV2(b *testing.B) {
 
 func BenchmarkNewV3(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		NewV3(NameSpaceDNS, name)
+		generator.NewV3(NameSpaceDNS, "www.example.com")
 	}
 	b.StopTimer()
 	b.ReportAllocs()
@@ -33,7 +33,7 @@ func BenchmarkNewV3(b *testing.B) {
 
 func BenchmarkNewV4(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		NewV4()
+		generator.NewV4()
 	}
 	b.StopTimer()
 	b.ReportAllocs()
@@ -41,7 +41,7 @@ func BenchmarkNewV4(b *testing.B) {
 
 func BenchmarkNewV5(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		NewV5(NameSpaceDNS, name)
+		generator.NewV5(NameSpaceDNS, "www.example.com")
 	}
 	b.StopTimer()
 	b.ReportAllocs()
@@ -67,7 +67,7 @@ func BenchmarkEqual(b *testing.B) {
 }
 
 func BenchmarkNew(b *testing.B) {
-	id := NewV2(DomainGroup).Bytes()
+	id := generator.NewV2(SystemIdGroup).Bytes()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		New(id)
@@ -105,7 +105,7 @@ func BenchmarkNow(b *testing.B) {
 }
 
 func BenchmarkFormatter(b *testing.B) {
-	id := NewV2(DomainGroup)
+	id := NewV2(SystemIdGroup)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		Formatter(id, "{%X-%X-%X-%x-%X}")
@@ -114,9 +114,9 @@ func BenchmarkFormatter(b *testing.B) {
 	b.ReportAllocs()
 }
 
-func BenchmarkUuid_Bytes(b *testing.B) {
-	id := make(Uuid, 16)
-	copy(id, NameSpaceDNS.Bytes())
+func BenchmarkUUID_Bytes(b *testing.B) {
+	id := UUID{}
+	copy(id[:], NameSpaceDNS.Bytes())
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		id.Bytes()
@@ -125,8 +125,8 @@ func BenchmarkUuid_Bytes(b *testing.B) {
 	b.ReportAllocs()
 }
 
-func BenchmarkUuid_String_Canonical(b *testing.B) {
-	id := NewV2(DomainGroup)
+func BenchmarkUUID_String_Canonical(b *testing.B) {
+	id := NewV2(SystemIdGroup)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = id.String()
@@ -135,9 +135,9 @@ func BenchmarkUuid_String_Canonical(b *testing.B) {
 	b.ReportAllocs()
 }
 
-func BenchmarkUuid_String_NonCanonical(b *testing.B) {
+func BenchmarkUUID_String_NonCanonical(b *testing.B) {
 	SwitchFormat(FormatUrn)
-	id := NewV2(DomainGroup)
+	id := NewV2(SystemIdGroup)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = id.String()
@@ -147,8 +147,8 @@ func BenchmarkUuid_String_NonCanonical(b *testing.B) {
 	SwitchFormat(FormatCanonical)
 }
 
-func BenchmarkUuid_Variant(b *testing.B) {
-	id := NewV2(DomainGroup)
+func BenchmarkUUID_Variant(b *testing.B) {
+	id := NewV2(SystemIdGroup)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = id.Variant()
@@ -157,8 +157,8 @@ func BenchmarkUuid_Variant(b *testing.B) {
 	b.ReportAllocs()
 }
 
-func BenchmarkUuid_Version(b *testing.B) {
-	id := NewV2(DomainGroup)
+func BenchmarkUUID_Version(b *testing.B) {
+	id := generator.NewV1()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = id.Version()
@@ -167,10 +167,16 @@ func BenchmarkUuid_Version(b *testing.B) {
 	b.ReportAllocs()
 }
 
-func BenchmarkNameSpace_Bytes(b *testing.B) {
+func BenchmarkImmutable_Bytes(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		NameSpaceDNS.Bytes()
 	}
+	b.StopTimer()
+	b.ReportAllocs()
+}
+
+func BenchmarkBulkV1(b *testing.B) {
+	BulkV1(5000)
 	b.StopTimer()
 	b.ReportAllocs()
 }

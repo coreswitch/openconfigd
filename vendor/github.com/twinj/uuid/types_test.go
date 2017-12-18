@@ -1,38 +1,38 @@
 package uuid
 
 import (
-	"errors"
+	"gopkg.in/stretchr/testify.v1/assert"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestUuid_Bytes(t *testing.T) {
-	id := make(Uuid, length)
-	copy(id, NameSpaceDNS.Bytes())
+	id := UUID{}
+	copy(id[:], NameSpaceDNS.Bytes())
 	assert.Equal(t, id.Bytes(), NameSpaceDNS.Bytes(), "Bytes should be the same")
 }
 
 func TestUuid_Size(t *testing.T) {
-	id := make(Uuid, length)
+	id := UUID{}
 	assert.Equal(t, 16, id.Size(), "The size of the array should be sixteen")
 }
 
 func TestUuid_String(t *testing.T) {
-	id := Uuid(uuidBytes)
+	id := UUID{}
+	copy(id[:], uuidBytes)
 	assert.Equal(t, idString, id.String(), "The Format given should match the output")
 }
 
 func TestUuid_Variant(t *testing.T) {
-	bytes := make(Uuid, length)
-	copy(bytes, uuidBytes[:])
+	id := UUID{}
+	copy(id[:], uuidBytes)
+	bytes := id[:]
 
 	for _, v := range uuidVariants {
 		for i := 0; i <= 255; i++ {
 			bytes[variantIndex] = byte(i)
-			id := createMarshaler(bytes, 4, v)
+			id := createMarshaler(bytes[:], 4, v)
 			b := id[variantIndex] >> 4
-			tVariantConstraint(v, b, id, t)
+			tVariantConstraint(v, b, t)
 			assert.Equal(t, v, id.Variant(), "%x does not resolve to %x", id.Variant(), v)
 		}
 	}
@@ -54,17 +54,16 @@ func didMarshalerSetVariantPanic(bytes []byte) bool {
 }
 
 func TestUuid_Version(t *testing.T) {
-	id := make(Uuid, length)
+	id := UUID{}
+	bytes := UUID{}
+	bytes.unmarshal(uuidBytes[:])
 
-	bytes := make(Uuid, length)
-	copy(bytes, uuidBytes[:])
-
-	assert.Equal(t, Unknown, id.Version(), "The version should be 0")
+	assert.Equal(t, VersionUnknown, id.Version(), "The version should be 0")
 
 	for v := 0; v < 16; v++ {
 		for i := 0; i <= 255; i++ {
 			bytes[versionIndex] = byte(i)
-			copy(id, bytes)
+			id.unmarshal(bytes[:])
 			setVersion(&id[versionIndex], v)
 			if v > 0 && v < 6 {
 				assert.Equal(t, Version(v), id.Version(), "%x does not resolve to %x", id.Version(), v)
@@ -94,16 +93,16 @@ func TestImmutable_String(t *testing.T) {
 }
 
 func TestImmutable_Variant(t *testing.T) {
-	bytes := make(Uuid, length)
-	copy(bytes, uuidBytes[:])
+	bytes := UUID{}
+	bytes.unmarshal(uuidBytes[:])
 
 	for _, v := range uuidVariants {
 		for i := 0; i <= 255; i++ {
 			bytes[variantIndex] = byte(i)
-			id := createMarshaler(bytes, 4, v)
+			id := createMarshaler(bytes[:], 4, v)
 			b := id[variantIndex] >> 4
-			tVariantConstraint(v, b, id, t)
-			id2 := Immutable(id)
+			tVariantConstraint(v, b, t)
+			id2 := Immutable(id[:])
 			assert.Equal(t, v, id2.Variant(), "%x does not resolve to %x", id2.Variant(), v)
 		}
 	}
@@ -111,45 +110,45 @@ func TestImmutable_Variant(t *testing.T) {
 
 func TestImmutable_Version(t *testing.T) {
 
-	id := make(Uuid, length)
-	bytes := make(Uuid, length)
-	copy(bytes, uuidBytes[:])
+	id := UUID{}
+	bytes := UUID{}
+	bytes.unmarshal(uuidBytes[:])
 
 	for v := 0; v < 16; v++ {
 		for i := 0; i <= 255; i++ {
 			bytes[versionIndex] = byte(i)
-			copy(id, bytes)
+			id.unmarshal(bytes[:])
 			setVersion(&id[versionIndex], v)
-			id2 := Immutable(id)
+			id2 := Immutable(id[:])
 
 			if v > 0 && v < 6 {
 				assert.Equal(t, Version(v), id2.Version(), "%x does not resolve to %x", id2.Version(), v)
 			} else {
-				assert.Equal(t, Version(v), getVersion(Uuid(id)), "%x does not resolve to %x", getVersion(Uuid(id)), v)
+				assert.Equal(t, Version(v), getVersion(UUID(id)), "%x does not resolve to %x", getVersion(UUID(id)), v)
 			}
 		}
 	}
 }
 
 func TestUuid_MarshalBinary(t *testing.T) {
-	id := Uuid(uuidBytes)
+	id := UUID{}
+	id.unmarshal(uuidBytes)
 	bytes, err := id.MarshalBinary()
 	assert.Nil(t, err, "There should be no error")
-	assert.Equal(t, uuidBytes[:], bytes, "Byte should be the same")
+	assert.Equal(t, uuidBytes, bytes, "Byte should be the same")
 }
 
 func TestUuid_UnmarshalBinary(t *testing.T) {
 
-	assert.True(t, didUnmarshalPanic(), "Should panic")
+	//assert.True(t, didUnmarshalPanic(), "Should panic")
 
-	u := Uuid{}
+	u := UUID{}
 	err := u.UnmarshalBinary([]byte{1, 2, 3, 4, 5})
-
 	assert.Error(t, err, "Expect length error")
 
 	err = u.UnmarshalBinary(uuidBytes[:])
 
-	u = Uuid{}
+	u = UUID{}
 
 	err = u.UnmarshalBinary(uuidBytes[:])
 
@@ -157,7 +156,7 @@ func TestUuid_UnmarshalBinary(t *testing.T) {
 
 	for k, v := range namespaces {
 		id, _ := Parse(v)
-		u = Uuid{}
+		u = UUID{}
 		u.UnmarshalBinary(id.Bytes())
 
 		assert.Equal(t, id.Bytes(), u.Bytes(), "The array id should equal the uuid id")
@@ -165,32 +164,31 @@ func TestUuid_UnmarshalBinary(t *testing.T) {
 	}
 }
 
-func didUnmarshalPanic() bool {
+func didUnmarshalPanic(id UUID, data []byte) bool {
 	return func() (didPanic bool) {
 		defer func() {
 			if recover() != nil {
 				didPanic = true
 			}
 		}()
-		u := make(Uuid, length)
-		u.UnmarshalBinary(uuidBytes[:])
+		id.UnmarshalBinary(data)
 		return
 	}()
 }
 
 func TestUuid_Scan(t *testing.T) {
-	var v Uuid
-	assert.Nil(t, v)
+	var v UUID
+	assert.True(t, IsNil(v))
 
 	err := v.Scan(nil)
 	assert.NoError(t, err, "When nil there should be no error")
-	assert.Empty(t, v, "Should have no data")
+	assert.True(t, IsNil(v))
 
 	err = v.Scan("")
 	assert.NoError(t, err, "When nil there should be no error")
-	assert.Empty(t, v, "Should have no data")
+	assert.True(t, IsNil(v))
 
-	var v2 Uuid
+	var v2 UUID
 	err = v2.Scan(NameSpaceDNS.Bytes())
 	assert.NoError(t, err, "When nil there should be no error")
 	assert.Equal(t, NameSpaceDNS.Bytes(), v2.Bytes(), "Values should be the same")
@@ -199,7 +197,7 @@ func TestUuid_Scan(t *testing.T) {
 	assert.NoError(t, err, "When nil there should be no error")
 	assert.Equal(t, NameSpaceDNS.String(), v.String(), "Values should be the same")
 
-	var v3 Uuid
+	var v3 UUID
 	err = v3.Scan([]byte(NameSpaceDNS.String()))
 	assert.NoError(t, err, "When []byte represents string should be no error")
 	assert.Equal(t, NameSpaceDNS.String(), v3.String(), "Values should be the same")
@@ -209,47 +207,47 @@ func TestUuid_Scan(t *testing.T) {
 }
 
 func TestUuid_Value(t *testing.T) {
-	var v Uuid
-	assert.Nil(t, v)
+	var v UUID
+	assert.True(t, IsNil(v))
 
 	id, err := v.Value()
-	assert.Nil(t, id, "There hsould be no driver valuie")
+	assert.Nil(t, id, "There should be no driver value")
 	assert.NoError(t, err, "There should be no error")
 
-	ns := Uuid(NameSpaceDNS)
+	ns := NameSpaceDNS.UUID()
 
 	id, err = ns.Value()
-	assert.NotNil(t, id, "Ther hsould be a vliad driver value")
+	assert.NotNil(t, id, "There should be a valid driver value")
 	assert.NoError(t, err, "There should be no error")
 }
 
-func getVersion(pId Uuid) Version {
+func getVersion(pId UUID) Version {
 	return Version(pId[versionIndex] >> 4)
 }
 
-func createMarshaler(pData []byte, pVersion int, pVariant uint8) Uuid {
-	o := make(Uuid, length)
-	copy(o, pData)
-	setVersion(&o[versionIndex], pVersion)
-	setVariant(&o[variantIndex], pVariant)
+func createMarshaler(data []byte, version int, variant uint8) UUID {
+	o := UUID{}
+	o.unmarshal(data)
+	setVersion(&o[versionIndex], version)
+	setVariant(&o[variantIndex], variant)
 	return o
 }
 
-func setVersion(pByte *byte, pVersion int) {
-	*pByte &= 0x0f
-	*pByte |= uint8(pVersion << 4)
+func setVersion(byte *byte, version int) {
+	*byte &= 0x0f
+	*byte |= uint8(version << 4)
 }
 
-func setVariant(pByte *byte, pVariant uint8) {
-	switch pVariant {
+func setVariant(byte *byte, variant uint8) {
+	switch variant {
 	case VariantRFC4122:
-		*pByte &= variantSet
+		*byte &= variantSet
 	case VariantFuture, VariantMicrosoft:
-		*pByte &= 0x1F
+		*byte &= 0x1F
 	case VariantNCS:
-		*pByte &= 0x7F
+		*byte &= 0x7F
 	default:
-		panic(errors.New("uuid.setVariant: invalid variant mask"))
+		panic("uuid: invalid variant mask")
 	}
-	*pByte |= pVariant
+	*byte |= variant
 }

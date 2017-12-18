@@ -15,11 +15,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/influxdata/influxdb/influxql"
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/pkg/bytesutil"
 	"github.com/influxdata/influxdb/pkg/estimator"
 	"github.com/influxdata/influxdb/pkg/limiter"
+	"github.com/influxdata/influxdb/query"
+	"github.com/influxdata/influxql"
 	"github.com/uber-go/zap"
 )
 
@@ -131,6 +132,11 @@ func (s *Store) Open() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.opened {
+		// Already open
+		return nil
+	}
+
 	s.closing = make(chan struct{})
 	s.shards = map[uint64]*Shard{}
 
@@ -173,19 +179,7 @@ func (s *Store) loadShards() error {
 		lim = runtime.GOMAXPROCS(0)
 	}
 
-	// If only one compacttion can run at time, use the same limiter for high and low
-	// priority work.
-	if lim == 1 {
-		s.EngineOptions.HiPriCompactionLimiter = limiter.NewFixed(1)
-		s.EngineOptions.LoPriCompactionLimiter = s.EngineOptions.HiPriCompactionLimiter
-	} else {
-		// Split the available high and low priority limiters between the available cores.
-		// The high priority work can steal from low priority at times so it can use the
-		// full limit if there is pending work.  The low priority is capped at half the
-		// limit.
-		s.EngineOptions.HiPriCompactionLimiter = limiter.NewFixed(lim/2 + lim%2)
-		s.EngineOptions.LoPriCompactionLimiter = limiter.NewFixed(lim / 2)
-	}
+	s.EngineOptions.CompactionLimiter = limiter.NewFixed(lim)
 
 	t := limiter.NewFixed(runtime.GOMAXPROCS(0))
 	resC := make(chan *res)
@@ -302,12 +296,13 @@ func (s *Store) loadShards() error {
 // shards through the Store will result in ErrStoreClosed being returned.
 func (s *Store) Close() error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	if s.opened {
 		close(s.closing)
 	}
+	s.mu.Unlock()
+
 	s.wg.Wait()
+	// No other goroutines accessing the store, so no need for a Lock.
 
 	// Close all the shards in parallel.
 	if err := s.walkShards(s.shardsSlice(), func(sh *Shard) error {
@@ -316,9 +311,10 @@ func (s *Store) Close() error {
 		return err
 	}
 
-	s.opened = false
+	s.mu.Lock()
 	s.shards = nil
-
+	s.opened = false // Store may now be opened again.
+	s.mu.Unlock()
 	return nil
 }
 
@@ -967,6 +963,13 @@ func (s *Store) MeasurementNames(database string, cond influxql.Expr) ([][]byte,
 	shards := s.filterShards(byDatabase(database))
 	s.mu.RUnlock()
 
+	// If we're using the inmem index then all shards contain a duplicate
+	// version of the global index. We don't need to iterate over all shards
+	// since we have everything we need from the first shard.
+	if len(shards) > 0 && shards[0].IndexType() == "inmem" {
+		shards = shards[:1]
+	}
+
 	// Map to deduplicate measurement names across all shards.  This is kind of naive
 	// and could be improved using a sorted merge of the already sorted measurements in
 	// each shard.
@@ -997,6 +1000,148 @@ func (s *Store) MeasurementSeriesCounts(database string) (measuments int, series
 	return 0, 0
 }
 
+type TagKeys struct {
+	Measurement string
+	Keys        []string
+}
+
+type TagKeysSlice []TagKeys
+
+func (a TagKeysSlice) Len() int           { return len(a) }
+func (a TagKeysSlice) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a TagKeysSlice) Less(i, j int) bool { return a[i].Measurement < a[j].Measurement }
+
+type tagKeys struct {
+	name []byte
+	keys []string
+}
+
+type tagKeysSlice []tagKeys
+
+func (a tagKeysSlice) Len() int           { return len(a) }
+func (a tagKeysSlice) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a tagKeysSlice) Less(i, j int) bool { return bytes.Compare(a[i].name, a[j].name) == -1 }
+
+// TagKeys returns the tag keys in the given database, matching the condition.
+func (s *Store) TagKeys(auth query.Authorizer, shardIDs []uint64, cond influxql.Expr) ([]TagKeys, error) {
+	measurementExpr := influxql.CloneExpr(cond)
+	measurementExpr = influxql.Reduce(influxql.RewriteExpr(measurementExpr, func(e influxql.Expr) influxql.Expr {
+		switch e := e.(type) {
+		case *influxql.BinaryExpr:
+			switch e.Op {
+			case influxql.EQ, influxql.NEQ, influxql.EQREGEX, influxql.NEQREGEX:
+				tag, ok := e.LHS.(*influxql.VarRef)
+				if !ok || tag.Val != "_name" {
+					return nil
+				}
+			}
+		}
+		return e
+	}), nil)
+
+	filterExpr := influxql.CloneExpr(cond)
+	filterExpr = influxql.Reduce(influxql.RewriteExpr(filterExpr, func(e influxql.Expr) influxql.Expr {
+		switch e := e.(type) {
+		case *influxql.BinaryExpr:
+			switch e.Op {
+			case influxql.EQ, influxql.NEQ, influxql.EQREGEX, influxql.NEQREGEX:
+				tag, ok := e.LHS.(*influxql.VarRef)
+				if !ok || strings.HasPrefix(tag.Val, "_") {
+					return nil
+				}
+			}
+		}
+		return e
+	}), nil)
+
+	// Get all the shards we're interested in.
+	shards := make([]*Shard, 0, len(shardIDs))
+	s.mu.RLock()
+	for _, sid := range shardIDs {
+		shard, ok := s.shards[sid]
+		if !ok {
+			continue
+		}
+		shards = append(shards, shard)
+	}
+	s.mu.RUnlock()
+
+	// If we're using the inmem index then all shards contain a duplicate
+	// version of the global index. We don't need to iterate over all shards
+	// since we have everything we need from the first shard.
+	if len(shards) > 0 && shards[0].IndexType() == "inmem" {
+		shards = shards[:1]
+	}
+
+	// Determine list of measurements.
+	nameSet := make(map[string]struct{})
+	for _, sh := range shards {
+		names, err := sh.MeasurementNamesByExpr(measurementExpr)
+		if err != nil {
+			return nil, err
+		}
+		for _, name := range names {
+			nameSet[string(name)] = struct{}{}
+		}
+	}
+
+	// Sort names.
+	names := make([]string, 0, len(nameSet))
+	for name := range nameSet {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	// Iterate over each measurement.
+	var results []TagKeys
+	for _, name := range names {
+		// Build keyset over all shards for measurement.
+		keySet := make(map[string]struct{})
+		for _, sh := range shards {
+			shardKeySet, err := sh.MeasurementTagKeysByExpr([]byte(name), nil)
+			if err != nil {
+				return nil, err
+			} else if len(shardKeySet) == 0 {
+				continue
+			}
+
+			// Sort the tag keys.
+			shardKeys := make([]string, 0, len(shardKeySet))
+			for k := range shardKeySet {
+				shardKeys = append(shardKeys, k)
+			}
+			sort.Strings(shardKeys)
+
+			// Filter against tag values, skip if no values exist.
+			shardValues, err := sh.MeasurementTagKeyValuesByExpr(auth, []byte(name), shardKeys, filterExpr, true)
+			if err != nil {
+				return nil, err
+			}
+
+			for i := range shardKeys {
+				if len(shardValues[i]) == 0 {
+					continue
+				}
+				keySet[shardKeys[i]] = struct{}{}
+			}
+		}
+
+		// Sort key set.
+		keys := make([]string, 0, len(keySet))
+		for key := range keySet {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+
+		// Add to resultset.
+		results = append(results, TagKeys{
+			Measurement: name,
+			Keys:        keys,
+		})
+	}
+	return results, nil
+}
+
 type TagValues struct {
 	Measurement string
 	Values      []KeyValue
@@ -1024,8 +1169,9 @@ func (a tagValuesSlice) Len() int           { return len(a) }
 func (a tagValuesSlice) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a tagValuesSlice) Less(i, j int) bool { return bytes.Compare(a[i].name, a[j].name) == -1 }
 
-// TagValues returns the tag keys and values in the given database, matching the condition.
-func (s *Store) TagValues(database string, cond influxql.Expr) ([]TagValues, error) {
+// TagValues returns the tag keys and values for the provided shards, where the
+// tag values satisfy the provided condition.
+func (s *Store) TagValues(auth query.Authorizer, shardIDs []uint64, cond influxql.Expr) ([]TagValues, error) {
 	if cond == nil {
 		return nil, errors.New("a condition is required")
 	}
@@ -1060,15 +1206,22 @@ func (s *Store) TagValues(database string, cond influxql.Expr) ([]TagValues, err
 		return e
 	}), nil)
 
-	// Get all measurements for the shards we're interested in.
+	// Get set of Shards to work on.
+	shards := make([]*Shard, 0, len(shardIDs))
 	s.mu.RLock()
-	shards := s.filterShards(byDatabase(database))
+	for _, sid := range shardIDs {
+		shard, ok := s.shards[sid]
+		if !ok {
+			continue
+		}
+		shards = append(shards, shard)
+	}
 	s.mu.RUnlock()
 
 	// If we're using the inmem index then all shards contain a duplicate
 	// version of the global index. We don't need to iterate over all shards
 	// since we have everything we need from the first shard.
-	if s.EngineOptions.IndexVersion == "inmem" && len(shards) > 0 {
+	if len(shards) > 0 && shards[0].IndexType() == "inmem" {
 		shards = shards[:1]
 	}
 
@@ -1121,10 +1274,28 @@ func (s *Store) TagValues(database string, cond influxql.Expr) ([]TagValues, err
 			// get all the tag values for each key in the keyset.
 			// Each slice in the results contains the sorted values associated
 			// associated with each tag key for the measurement from the key set.
-			if result.values, err = sh.MeasurementTagKeyValuesByExpr(name, result.keys, filterExpr, true); err != nil {
+			if result.values, err = sh.MeasurementTagKeyValuesByExpr(auth, name, result.keys, filterExpr, true); err != nil {
 				return nil, err
 			}
-			allResults = append(allResults, result)
+
+			// remove any tag keys that didn't have any authorized values
+			j := 0
+			for i := range result.keys {
+				if len(result.values[i]) == 0 {
+					continue
+				}
+
+				result.keys[j] = result.keys[i]
+				result.values[j] = result.values[i]
+				j++
+			}
+			result.keys = result.keys[:j]
+			result.values = result.values[:j]
+
+			// only include result if there are keys with values
+			if len(result.keys) > 0 {
+				allResults = append(allResults, result)
+			}
 		}
 	}
 
@@ -1285,7 +1456,7 @@ func (s *Store) monitorShards() {
 			for _, sh := range s.shards {
 				if sh.IsIdle() {
 					if err := sh.Free(); err != nil {
-						s.Logger.Warn("error free cold shard resources: %v", zap.Error(err))
+						s.Logger.Warn("error free cold shard resources:", zap.Error(err))
 					}
 				} else {
 					sh.SetCompactionsEnabled(true)

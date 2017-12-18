@@ -1,26 +1,20 @@
 package uuid
 
-/****************
- * Date: 3/02/14
- * Time: 10:59 PM
- ***************/
-
 import (
 	"crypto/md5"
 	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/binary"
-	"fmt"
-	"github.com/stretchr/testify/assert"
+	"gopkg.in/stretchr/testify.v1/assert"
+	"hash"
 	"net/url"
+	"runtime"
 	"testing"
 )
 
-const (
-	generate = 10000
-)
-
 var (
-	goLang Name = "https://google.com/golang.org?q=golang"
+	goLang = "https://google.com/golang.org?q=golang"
 
 	uuidBytes = []byte{
 		0xaa, 0xcf, 0xee, 0x12,
@@ -37,7 +31,7 @@ var (
 		VariantNCS, VariantRFC4122, VariantMicrosoft, VariantFuture,
 	}
 
-	namespaces = make(map[UUID]string)
+	namespaces = make(map[Implementation]string)
 
 	invalidHexStrings = [...]string{
 		"foo",
@@ -96,7 +90,7 @@ func TestCompare(t *testing.T) {
 	assert.True(t, Compare(NameSpaceDNS, Nil) == 1, "DNS should be greater than Nil")
 	assert.True(t, Compare(Nil, Nil) == 0, "Nil should equal to Nil")
 
-	b1 := Uuid([]byte{
+	b1 := UUID([16]byte{
 		0x01, 0x09, 0x09, 0x00,
 		0xff, 0x02,
 		0xff, 0x03,
@@ -104,7 +98,7 @@ func TestCompare(t *testing.T) {
 		0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
 
-	b2 := Uuid([]byte{
+	b2 := UUID([16]byte{
 		0x01, 0x09, 0x09, 0x00,
 		0xff, 0x02,
 		0xff, 0x03,
@@ -158,7 +152,7 @@ func TestCompare(t *testing.T) {
 func TestNewHex(t *testing.T) {
 	s := "e902893a9d223c7ea7b8d6e313b71d9f"
 	u := NewHex(s)
-	assert.Equal(t, Three, u.Version(), "Expected correct version")
+	assert.Equal(t, VersionThree, u.Version(), "Expected correct version")
 	assert.Equal(t, VariantRFC4122, u.Variant(), "Expected correct variant")
 	assert.True(t, parseUUIDRegex.MatchString(u.String()), "Expected string representation to be valid")
 
@@ -199,102 +193,114 @@ func TestNew(t *testing.T) {
 		u := New(k.Bytes())
 
 		assert.NotNil(t, u, "Expected a valid non nil UUID")
-		assert.Equal(t, One, u.Version(), "Expected correct version %d, but got %d", One, u.Version())
+		assert.Equal(t, VersionOne, u.Version(), "Expected correct version %d, but got %d", VersionOne, u.Version())
 		assert.Equal(t, VariantRFC4122, u.Variant(), "Expected ReservedNCS variant %x, but got %x", VariantNCS, u.Variant())
 		assert.Equal(t, k.String(), u.String(), "Stringer versions should equal")
 	}
 }
 
-func TestUUID_NewBulk(t *testing.T) {
+func TestNew_Bulk(t *testing.T) {
 	for i := 0; i < 1000000; i++ {
 		New(uuidBytes[:])
 	}
 }
 
-func TestUUID_NewHexBulk(t *testing.T) {
+func TestNewHex_Bulk(t *testing.T) {
 	for i := 0; i < 1000000; i++ {
 		s := "f3593cffee9240df408687825b523f13"
 		NewHex(s)
 	}
 }
 
-func TestDigest(t *testing.T) {
-	id := digest(md5.New(), []byte(NameSpaceDNS), goLang)
-	u := Uuid(id)
-	if u.Bytes() == nil {
-		t.Error("Expected new data in bytes")
+func TestNewHash(t *testing.T) {
+	ids := make([]UUID, 5)
+	for i, v := range []hash.Hash{
+		md5.New(), sha1.New(), sha512.New(), sha256.New(),
+	} {
+		var id string
+		id = "this is a unique id"
+		ids[i] = NewHash(v, NameSpaceDNS, goLang, NameSpaceDNS.Bytes(), &id)
+		assert.False(t, IsNil(ids[i]))
+		assert.Equal(t, VersionUnknown, ids[i].Version(), "Expected correct version")
+		assert.Equal(t, VariantFuture, ids[i].Variant(), "Expected correct variant")
 	}
-	id = digest(sha1.New(), []byte(NameSpaceDNS), goLang)
-	u = Uuid(id)
-	if u.Bytes() == nil {
-		t.Error("Expected new data in bytes")
-	}
+
+	assert.True(t, didNewHashPanic())
+}
+
+func didNewHashPanic() bool {
+	return func() (didPanic bool) {
+		defer func() {
+			if recover() != nil {
+				didPanic = true
+			}
+		}()
+		NewHash(md5.New(), NameSpaceDNS, 0)
+		return
+	}()
 }
 
 func TestNewV1(t *testing.T) {
-	generator.Do(generator.init)
-	u := NewV1()
-	assert.Equal(t, One, u.Version(), "Expected correct version")
-	assert.Equal(t, VariantRFC4122, u.Variant(), "Expected correct variant")
-	assert.True(t, parseUUIDRegex.MatchString(u.String()), "Expected string representation to be valid")
+	id := NewV1()
+	assert.Equal(t, VersionOne, id.Version(), "Expected correct version")
+	assert.Equal(t, VariantRFC4122, id.Variant(), "Expected correct variant")
+	assert.True(t, parseUUIDRegex.MatchString(id.String()), "Expected string representation to be valid")
 }
 
 func TestNewV2(t *testing.T) {
-	u := NewV2(DomainGroup)
-
-	assert.Equal(t, Two, u.Version(), "Expected correct version")
-	assert.Equal(t, VariantRFC4122, u.Variant(), "Expected correct variant")
-	assert.True(t, parseUUIDRegex.MatchString(u.String()), "Expected string representation to be valid")
+	id := NewV2(SystemIdGroup)
+	assert.Equal(t, VersionTwo, id.Version(), "Expected correct version")
+	assert.Equal(t, VariantRFC4122, id.Variant(), "Expected correct variant")
+	assert.True(t, parseUUIDRegex.MatchString(id.String()), "Expected string representation to be valid")
 }
 
 func TestNewV3(t *testing.T) {
-	u := NewV3(NameSpaceURL, goLang)
-
-	assert.Equal(t, Three, u.Version(), "Expected correct version")
-	assert.Equal(t, VariantRFC4122, u.Variant(), "Expected correct variant")
-	assert.True(t, parseUUIDRegex.MatchString(u.String()), "Expected string representation to be valid")
+	id := NewV3(NameSpaceURL, goLang)
+	assert.Equal(t, VersionThree, id.Version(), "Expected correct version")
+	assert.Equal(t, VariantRFC4122, id.Variant(), "Expected correct variant")
+	assert.True(t, parseUUIDRegex.MatchString(id.String()), "Expected string representation to be valid")
 
 	ur, _ := url.Parse(string(goLang))
 
 	// Same NS same name MUST be equal
-	u2 := NewV3(NameSpaceURL, ur)
-	assert.Equal(t, u, u2, "Expected UUIDs generated with same namespace and name to equal")
+	id2 := NewV3(NameSpaceURL, ur)
+	assert.Equal(t, id, id2, "Expected UUIDs generated with same namespace and name to equal")
 
 	// Different NS same name MUST NOT be equal
-	u3 := NewV3(NameSpaceDNS, ur)
-	assert.NotEqual(t, u, u3, "Expected UUIDs generated with different namespace and same name to be different")
+	id3 := NewV3(NameSpaceDNS, ur)
+	assert.NotEqual(t, id, id3, "Expected UUIDs generated with different namespace and same name to be different")
 
 	// Same NS different name MUST NOT be equal
-	u4 := NewV3(NameSpaceURL, u)
-	assert.NotEqual(t, u, u4, "Expected UUIDs generated with the same namespace and different names to be different")
+	id4 := NewV3(NameSpaceURL, id)
+	assert.NotEqual(t, id, id4, "Expected UUIDs generated with the same namespace and different names to be different")
 
-	ids := []UUID{
-		u, u2, u3, u4,
+	ids := []Implementation{
+		id, id2, id3, id4,
 	}
 
 	for j, id := range ids {
-		i := NewV3(NameSpaceURL, Name(string(j)), id)
+		i := NewV3(NameSpaceURL, string(j), id)
 		assert.NotEqual(t, id, i, "Expected UUIDs generated with the same namespace and different names to be different")
 	}
 
-	u = NewV3(NameSpaceDNS, Name("www.example.com"))
-	assert.Equal(t, "5df41881-3aed-3515-88a7-2f4a814cf09e", u.String())
+	id = NewV3(NameSpaceDNS, "www.example.com")
+	assert.Equal(t, "5df41881-3aed-3515-88a7-2f4a814cf09e", id.String())
 
-	u = NewV3(NameSpaceDNS, Name("python.org"))
-	assert.Equal(t, "6fa459ea-ee8a-3ca4-894e-db77e160355e", u.String())
+	id = NewV3(NameSpaceDNS, "python.org")
+	assert.Equal(t, "6fa459ea-ee8a-3ca4-894e-db77e160355e", id.String())
 }
 
 func TestNewV4(t *testing.T) {
-	u := NewV4()
-	assert.Equal(t, Four, u.Version(), "Expected correct version")
-	assert.Equal(t, VariantRFC4122, u.Variant(), "Expected correct variant")
-	assert.True(t, parseUUIDRegex.MatchString(u.String()), "Expected string representation to be valid")
+	id := NewV4()
+	assert.Equal(t, VersionFour, id.Version(), "Expected correct version")
+	assert.Equal(t, VariantRFC4122, id.Variant(), "Expected correct variant")
+	assert.True(t, parseUUIDRegex.MatchString(id.String()), "Expected string representation to be valid")
 }
 
 func TestNewV5(t *testing.T) {
 	u := NewV5(NameSpaceURL, goLang)
 
-	assert.Equal(t, Five, u.Version(), "Expected correct version")
+	assert.Equal(t, VersionFive, u.Version(), "Expected correct version")
 	assert.Equal(t, VariantRFC4122, u.Variant(), "Expected correct variant")
 	assert.True(t, parseUUIDRegex.MatchString(u.String()), "Expected string representation to be valid")
 
@@ -312,134 +318,107 @@ func TestNewV5(t *testing.T) {
 	u4 := NewV5(NameSpaceURL, u)
 	assert.NotEqual(t, u, u4, "Expected UUIDs generated with the same namespace and different names to be different")
 
-	ids := []UUID{
+	ids := []Implementation{
 		u, u2, u3, u4,
 	}
 
 	for j, id := range ids {
-		i := NewV5(NameSpaceURL, Name(string(j)), id)
+		i := NewV5(NameSpaceURL, string(j), id)
 		assert.NotEqual(t, i, id, "Expected UUIDs generated with the same namespace and different names to be different")
 	}
 
-	u = NewV5(NameSpaceDNS, Name("python.org"))
+	u = NewV5(NameSpaceDNS, "python.org")
 	assert.Equal(t, "886313e1-3b8a-5372-9b90-0c9aee199e5d", u.String())
 }
 
-var printIt = false
-
-func printer(pId UUID) {
-	if printIt {
-		fmt.Println(pId)
-	}
+func TestBulkV1(t *testing.T) {
+	eachIsUnique(t, BulkV1(100))
 }
 
-func TestUUID_NewV1Bulk(t *testing.T) {
-	for i := 0; i < generate; i++ {
-		printer(NewV1())
-	}
-}
-
-func TestUUID_NewV3Bulk(t *testing.T) {
-	for i := 0; i < generate; i++ {
-		printer(NewV3(NameSpaceDNS, goLang, Name(string(i))))
-	}
-}
-
-func TestUUID_NewV4Bulk(t *testing.T) {
-	for i := 0; i < generate; i++ {
-		printer(NewV4())
-	}
-}
-
-func TestUUID_NewV5Bulk(t *testing.T) {
-	for i := 0; i < generate; i++ {
-		printer(NewV5(NameSpaceDNS, goLang, Name(string(i))))
-	}
+func TestBulkV4(t *testing.T) {
+	eachIsUnique(t, BulkV4(100))
 }
 
 func Test_EachIsUnique(t *testing.T) {
 
 	// Run half way through to avoid running within default resolution only
+	BulkV1(int(defaultSpinResolution / 2))
 
-	spin := int(defaultSpinResolution / 2)
+	spin := int(defaultSpinResolution)
 
-	for i := 0; i < spin; i++ {
-		NewV1()
+	// Test V1
+	eachIsUnique(t, BulkV1(spin))
+
+	// Test V2
+	if runtime.GOOS != "windows" {
+		id := NewV2(SystemIdUser)
+		id2 := NewV2(SystemIdGroup)
+		assert.NotEqual(t, id, id2)
 	}
 
-	s := int(defaultSpinResolution)
+	// Test V4
+	ids := BulkV4(spin)
 
-	ids := make([]UUID, s)
-	for i := 0; i < s; i++ {
-		u := NewV1()
-		ids[i] = u
-		for j := 0; j < i; j++ {
-			if b := assert.NotEqual(t, u.String(), ids[j].String(), "Should not create the same V1 UUID"); !b {
-				break
+	eachIsUnique(t, ids)
+
+	// Test V3
+	eachHashableIsUnique(t, spin, func(i int) UUID { return NewV3(NameSpaceDNS, string(i)) })
+
+	// Test V5
+	eachHashableIsUnique(t, spin, func(i int) UUID { return NewV5(NameSpaceDNS, string(i)) })
+}
+
+func eachIsUnique(t *testing.T, ids []UUID) {
+	for i, v := range ids {
+		for j := 0; j < len(ids); j++ {
+			if i == j {
+				continue
 			}
-		}
-	}
-	//ids = make([]UUID, s)
-	//for i := 0; i < s; i++ {
-	//	u := NewV2(DomainGroup)
-	//	ids[i] = u
-	//	for j := 0; j < i; j++ {
-	//		assert.NotEqual(t, u.String(), ids[j].String(), "Should not create the same V2 UUID")
-	//	}
-	//}
-	ids = make([]UUID, s)
-	for i := 0; i < s; i++ {
-		u := NewV3(NameSpaceDNS, Name(string(i)), goLang)
-		ids[i] = u
-		for j := 0; j < i; j++ {
-			if b := assert.NotEqual(t, u.String(), ids[j].String(), "Should not create the same V3 UUID"); !b {
-				break
-			}
-		}
-	}
-	ids = make([]UUID, s)
-	for i := 0; i < s; i++ {
-		u := NewV4()
-		ids[i] = u
-		for j := 0; j < i; j++ {
-			if b := assert.NotEqual(t, u.String(), ids[j].String(), "Should not create the same V4 UUID"); !b {
-				break
-			}
-		}
-	}
-	ids = make([]UUID, s)
-	for i := 0; i < s; i++ {
-		u := NewV5(NameSpaceDNS, Name(string(i)), goLang)
-		ids[i] = u
-		for j := 0; j < i; j++ {
-			if b := assert.NotEqual(t, u.String(), ids[j].String(), "Should not create the same V5 UUID"); !b {
+			if b := assert.NotEqual(t, v.String(), ids[j].String(), "Should not create the same UUID"); !b {
 				break
 			}
 		}
 	}
 }
 
+func eachHashableIsUnique(t *testing.T, spin int, id func(int) UUID) {
+	ids := make([]UUID, spin)
+	for i := range ids {
+		ids[i] = id(i)
+	}
+	eachIsUnique(t, ids)
+}
+
 func Test_NameSpaceUUIDs(t *testing.T) {
 	for k, v := range namespaces {
-
 		arrayId, _ := Parse(v)
-		uuidId := array{}
+		uuidId := UUID{}
 		uuidId.unmarshal(arrayId.Bytes())
 		assert.Equal(t, v, arrayId.String())
 		assert.Equal(t, v, k.String())
 	}
 }
 
-func TestNewV12(t *testing.T) {
-	id := array{}
+func TestIsNil(t *testing.T) {
+	assert.True(t, IsNil(nil))
+	assert.True(t, IsNil(Nil))
+	assert.True(t, IsNil(UUID{}))
+	assert.False(t, IsNil(NameSpaceDNS))
+	assert.False(t, IsNil(NewV1()))
+	assert.False(t, IsNil(NewV2(SystemIdGroup)))
+	assert.False(t, IsNil(NewV3(NameSpaceDNS, "www.example.com")))
+	assert.False(t, IsNil(NewV4()))
+	assert.False(t, IsNil(NewV5(NameSpaceDNS, "www.example.com")))
+}
 
-	makeUuid(&id,
-		0x6ba7b810,
-		0x9dad,
-		0x11d1,
-		0x80b4,
-		[]byte{0x00, 0xc0, 0x4f, 0xd4, 0x30, 0xc8})
+func TestReadV1(t *testing.T) {
+	ids := make([]UUID, 100)
+	ReadV1(ids)
+	eachIsUnique(t, ids)
+}
 
-	assert.Equal(t, id[:], NameSpaceDNS.Bytes())
-	fmt.Println(Uuid(id[:]))
+func TestReadV4(t *testing.T) {
+	ids := make([]UUID, 100)
+	ReadV4(ids)
+	eachIsUnique(t, ids)
 }

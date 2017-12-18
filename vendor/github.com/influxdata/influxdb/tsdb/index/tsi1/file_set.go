@@ -6,28 +6,31 @@ import (
 	"fmt"
 	"regexp"
 
-	"github.com/influxdata/influxdb/influxql"
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/pkg/bloom"
 	"github.com/influxdata/influxdb/pkg/bytesutil"
 	"github.com/influxdata/influxdb/pkg/estimator"
 	"github.com/influxdata/influxdb/pkg/estimator/hll"
+	"github.com/influxdata/influxdb/query"
 	"github.com/influxdata/influxdb/tsdb"
+	"github.com/influxdata/influxql"
 )
 
 // FileSet represents a collection of files.
 type FileSet struct {
-	levels  []CompactionLevel
-	files   []File
-	filters []*bloom.Filter // per-level filters
+	levels   []CompactionLevel
+	files    []File
+	filters  []*bloom.Filter // per-level filters
+	database string
 }
 
 // NewFileSet returns a new instance of FileSet.
-func NewFileSet(levels []CompactionLevel, files []File) (*FileSet, error) {
+func NewFileSet(database string, levels []CompactionLevel, files []File) (*FileSet, error) {
 	fs := &FileSet{
-		levels:  levels,
-		files:   files,
-		filters: make([]*bloom.Filter, len(levels)),
+		levels:   levels,
+		files:    files,
+		filters:  make([]*bloom.Filter, len(levels)),
+		database: database,
 	}
 	if err := fs.buildFilters(); err != nil {
 		return nil, err
@@ -247,6 +250,17 @@ func (fs *FileSet) TagKeyIterator(name []byte) TagKeyIterator {
 
 // MeasurementTagKeysByExpr extracts the tag keys wanted by the expression.
 func (fs *FileSet) MeasurementTagKeysByExpr(name []byte, expr influxql.Expr) (map[string]struct{}, error) {
+	// Return all keys if no condition was passed in.
+	if expr == nil {
+		m := make(map[string]struct{})
+		if itr := fs.TagKeyIterator(name); itr != nil {
+			for e := itr.Next(); e != nil; e = itr.Next() {
+				m[string(e.Key())] = struct{}{}
+			}
+		}
+		return m, nil
+	}
+
 	switch e := expr.(type) {
 	case *influxql.BinaryExpr:
 		switch e.Op {
@@ -312,7 +326,7 @@ func (fs *FileSet) MeasurementTagKeysByExpr(name []byte, expr influxql.Expr) (ma
 //
 // N.B tagValuesByKeyAndExpr relies on keys being sorted in ascending
 // lexicographic order.
-func (fs *FileSet) tagValuesByKeyAndExpr(name []byte, keys []string, expr influxql.Expr, fieldset *tsdb.MeasurementFieldSet) ([]map[string]struct{}, error) {
+func (fs *FileSet) tagValuesByKeyAndExpr(auth query.Authorizer, name []byte, keys []string, expr influxql.Expr, fieldset *tsdb.MeasurementFieldSet) ([]map[string]struct{}, error) {
 	itr, err := fs.seriesByExprIterator(name, expr, fieldset.Fields(string(name)))
 	if err != nil {
 		return nil, err
@@ -337,6 +351,9 @@ func (fs *FileSet) tagValuesByKeyAndExpr(name []byte, keys []string, expr influx
 
 	// Iterate all series to collect tag values.
 	for e := itr.Next(); e != nil; e = itr.Next() {
+		if auth != nil && !auth.AuthorizeSeriesRead(fs.database, e.Name(), e.Tags()) {
+			continue
+		}
 		for _, t := range e.Tags() {
 			if idx, ok := keyIdxs[string(t.Key)]; ok {
 				resultSet[idx][string(t.Value)] = struct{}{}
@@ -522,9 +539,13 @@ func (fs *FileSet) MeasurementNamesByExpr(expr influxql.Expr) ([][]byte, error) 
 		return fs.measurementNamesByExpr(expr)
 	}
 
+	itr := fs.MeasurementIterator()
+	if itr == nil {
+		return nil, nil
+	}
+
 	// Iterate over all measurements if no condition exists.
 	var names [][]byte
-	itr := fs.MeasurementIterator()
 	for e := itr.Next(); e != nil; e = itr.Next() {
 		names = append(names, e.Name())
 	}
@@ -599,8 +620,12 @@ func (fs *FileSet) measurementNamesByExpr(expr influxql.Expr) ([][]byte, error) 
 
 // measurementNamesByNameFilter returns matching measurement names in sorted order.
 func (fs *FileSet) measurementNamesByNameFilter(op influxql.Token, val string, regex *regexp.Regexp) [][]byte {
-	var names [][]byte
 	itr := fs.MeasurementIterator()
+	if itr == nil {
+		return nil
+	}
+
+	var names [][]byte
 	for e := itr.Next(); e != nil; e = itr.Next() {
 		var matched bool
 		switch op {
@@ -626,6 +651,10 @@ func (fs *FileSet) measurementNamesByTagFilter(op influxql.Token, key, val strin
 	var names [][]byte
 
 	mitr := fs.MeasurementIterator()
+	if mitr == nil {
+		return nil
+	}
+
 	for me := mitr.Next(); me != nil; me = mitr.Next() {
 		// If the operator is non-regex, only check the specified value.
 		var tagMatch bool

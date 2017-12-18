@@ -23,7 +23,7 @@
 
 [[constraint]]
   name = "github.com/coreos/etcd"
-  version = "3.2.7"
+  version = "3.2.11"
 
 [[constraint]]
   name = "github.com/coreswitch/cmd"
@@ -68,4 +68,4 @@
 
 [[constraint]]
   name = "google.golang.org/grpc"
-  version = "1.2.1"
+  version = "1.7.4"

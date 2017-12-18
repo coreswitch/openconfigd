@@ -3,6 +3,7 @@ package tsm1_test
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -18,13 +19,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/influxdata/influxdb/influxql"
+	"github.com/google/go-cmp/cmp"
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/pkg/deep"
 	"github.com/influxdata/influxdb/query"
 	"github.com/influxdata/influxdb/tsdb"
 	"github.com/influxdata/influxdb/tsdb/engine/tsm1"
 	"github.com/influxdata/influxdb/tsdb/index/inmem"
+	"github.com/influxdata/influxql"
 )
 
 /*
@@ -269,7 +271,7 @@ func TestEngine_CreateIterator_Cache_Ascending(t *testing.T) {
 		t.Fatalf("failed to write points: %s", err.Error())
 	}
 
-	itr, err := e.CreateIterator("cpu", query.IteratorOptions{
+	itr, err := e.CreateIterator(context.Background(), "cpu", query.IteratorOptions{
 		Expr:       influxql.MustParseExpr(`value`),
 		Dimensions: []string{"host"},
 		StartTime:  influxql.MinTime,
@@ -321,7 +323,7 @@ func TestEngine_CreateIterator_Cache_Descending(t *testing.T) {
 		t.Fatalf("failed to write points: %s", err.Error())
 	}
 
-	itr, err := e.CreateIterator("cpu", query.IteratorOptions{
+	itr, err := e.CreateIterator(context.Background(), "cpu", query.IteratorOptions{
 		Expr:       influxql.MustParseExpr(`value`),
 		Dimensions: []string{"host"},
 		StartTime:  influxql.MinTime,
@@ -374,11 +376,11 @@ func TestEngine_CreateIterator_TSM_Ascending(t *testing.T) {
 	}
 	e.MustWriteSnapshot()
 
-	itr, err := e.CreateIterator("cpu", query.IteratorOptions{
+	itr, err := e.CreateIterator(context.Background(), "cpu", query.IteratorOptions{
 		Expr:       influxql.MustParseExpr(`value`),
 		Dimensions: []string{"host"},
-		StartTime:  influxql.MinTime,
-		EndTime:    influxql.MaxTime,
+		StartTime:  1000000000,
+		EndTime:    3000000000,
 		Ascending:  true,
 	})
 	if err != nil {
@@ -427,7 +429,7 @@ func TestEngine_CreateIterator_TSM_Descending(t *testing.T) {
 	}
 	e.MustWriteSnapshot()
 
-	itr, err := e.CreateIterator("cpu", query.IteratorOptions{
+	itr, err := e.CreateIterator(context.Background(), "cpu", query.IteratorOptions{
 		Expr:       influxql.MustParseExpr(`value`),
 		Dimensions: []string{"host"},
 		StartTime:  influxql.MinTime,
@@ -482,7 +484,7 @@ func TestEngine_CreateIterator_Aux(t *testing.T) {
 		t.Fatalf("failed to write points: %s", err.Error())
 	}
 
-	itr, err := e.CreateIterator("cpu", query.IteratorOptions{
+	itr, err := e.CreateIterator(context.Background(), "cpu", query.IteratorOptions{
 		Expr:       influxql.MustParseExpr(`value`),
 		Aux:        []influxql.VarRef{{Val: "F"}},
 		Dimensions: []string{"host"},
@@ -545,7 +547,7 @@ func TestEngine_CreateIterator_Condition(t *testing.T) {
 		t.Fatalf("failed to write points: %s", err.Error())
 	}
 
-	itr, err := e.CreateIterator("cpu", query.IteratorOptions{
+	itr, err := e.CreateIterator(context.Background(), "cpu", query.IteratorOptions{
 		Expr:       influxql.MustParseExpr(`value`),
 		Dimensions: []string{"host"},
 		Condition:  influxql.MustParseExpr(`X = 10 OR Y > 150`),
@@ -713,6 +715,104 @@ func TestEngine_SnapshotsDisabled(t *testing.T) {
 	}
 }
 
+// Ensure engine can create an ascending cursor for cache and tsm values.
+func TestEngine_CreateCursor_Ascending(t *testing.T) {
+	t.Parallel()
+
+	e := MustOpenDefaultEngine()
+	defer e.Close()
+
+	e.MeasurementFields([]byte("cpu")).CreateFieldIfNotExists([]byte("value"), influxql.Float, false)
+	e.CreateSeriesIfNotExists([]byte("cpu,host=A"), []byte("cpu"), models.NewTags(map[string]string{"host": "A"}))
+
+	if err := e.WritePointsString(
+		`cpu,host=A value=1.1 1`,
+		`cpu,host=A value=1.2 2`,
+		`cpu,host=A value=1.3 3`,
+	); err != nil {
+		t.Fatalf("failed to write points: %s", err.Error())
+	}
+	e.MustWriteSnapshot()
+
+	if err := e.WritePointsString(
+		`cpu,host=A value=10.1 10`,
+		`cpu,host=A value=11.2 11`,
+		`cpu,host=A value=12.3 12`,
+	); err != nil {
+		t.Fatalf("failed to write points: %s", err.Error())
+	}
+
+	cur, err := e.CreateCursor(context.Background(), &tsdb.CursorRequest{
+		Measurement: "cpu",
+		Series:      "cpu,host=A",
+		Field:       "value",
+		Ascending:   true,
+		StartTime:   2,
+		EndTime:     11,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fcur := cur.(tsdb.FloatBatchCursor)
+	ts, vs := fcur.Next()
+	if !cmp.Equal([]int64{2, 3, 10, 11}, ts) {
+		t.Fatal("unexpect timestamps")
+	}
+	if !cmp.Equal([]float64{1.2, 1.3, 10.1, 11.2}, vs) {
+		t.Fatal("unexpect timestamps")
+	}
+}
+
+// Ensure engine can create an descending cursor for tsm values.
+func TestEngine_CreateCursor_Descending(t *testing.T) {
+	t.Parallel()
+
+	e := MustOpenDefaultEngine()
+	defer e.Close()
+
+	e.MeasurementFields([]byte("cpu")).CreateFieldIfNotExists([]byte("value"), influxql.Float, false)
+	e.CreateSeriesIfNotExists([]byte("cpu,host=A"), []byte("cpu"), models.NewTags(map[string]string{"host": "A"}))
+
+	if err := e.WritePointsString(
+		`cpu,host=A value=1.1 1`,
+		`cpu,host=A value=1.2 2`,
+		`cpu,host=A value=1.3 3`,
+	); err != nil {
+		t.Fatalf("failed to write points: %s", err.Error())
+	}
+	e.MustWriteSnapshot()
+
+	if err := e.WritePointsString(
+		`cpu,host=A value=10.1 10`,
+		`cpu,host=A value=11.2 11`,
+		`cpu,host=A value=12.3 12`,
+	); err != nil {
+		t.Fatalf("failed to write points: %s", err.Error())
+	}
+
+	cur, err := e.CreateCursor(context.Background(), &tsdb.CursorRequest{
+		Measurement: "cpu",
+		Series:      "cpu,host=A",
+		Field:       "value",
+		Ascending:   false,
+		StartTime:   2,
+		EndTime:     11,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fcur := cur.(tsdb.FloatBatchCursor)
+	ts, vs := fcur.Next()
+	if !cmp.Equal([]int64{11, 10, 3, 2}, ts) {
+		t.Fatal("unexpect timestamps")
+	}
+	if !cmp.Equal([]float64{11.2, 10.1, 1.3, 1.2}, vs) {
+		t.Fatal("unexpect timestamps")
+	}
+}
+
 func BenchmarkEngine_CreateIterator_Count_1K(b *testing.B) {
 	benchmarkEngineCreateIteratorCount(b, 1000)
 }
@@ -874,7 +974,7 @@ func benchmarkIterator(b *testing.B, opt query.IteratorOptions, pointN int) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		itr, err := e.CreateIterator("cpu", opt)
+		itr, err := e.CreateIterator(context.Background(), "cpu", opt)
 		if err != nil {
 			b.Fatal(err)
 		}

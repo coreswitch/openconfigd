@@ -1,13 +1,15 @@
 package query
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"sort"
 
-	"github.com/influxdata/influxdb/influxql"
+	"github.com/influxdata/influxdb/pkg/tracing"
+	"github.com/influxdata/influxql"
 )
 
 // SelectOptions are options that customize the select call.
@@ -54,7 +56,7 @@ type ShardGroup interface {
 // Select is a prepared statement that is ready to be executed.
 type PreparedStatement interface {
 	// Select creates the Iterators that will be used to read the query.
-	Select() ([]Iterator, []string, error)
+	Select(ctx context.Context) ([]Iterator, []string, error)
 
 	// Explain outputs the explain plan for this statement.
 	Explain() (string, error)
@@ -77,14 +79,14 @@ func Prepare(stmt *influxql.SelectStatement, shardMapper ShardMapper, opt Select
 
 // Select compiles, prepares, and then initiates execution of the query using the
 // default compile options.
-func Select(stmt *influxql.SelectStatement, shardMapper ShardMapper, opt SelectOptions) ([]Iterator, []string, error) {
+func Select(ctx context.Context, stmt *influxql.SelectStatement, shardMapper ShardMapper, opt SelectOptions) ([]Iterator, []string, error) {
 	s, err := Prepare(stmt, shardMapper, opt)
 	if err != nil {
 		return nil, nil, err
 	}
 	// Must be deferred so it runs after Select.
 	defer s.Close()
-	return s.Select()
+	return s.Select(ctx)
 }
 
 type preparedStatement struct {
@@ -97,8 +99,8 @@ type preparedStatement struct {
 	columns []string
 }
 
-func (p *preparedStatement) Select() ([]Iterator, []string, error) {
-	itrs, err := buildIterators(p.stmt, p.ic, p.opt)
+func (p *preparedStatement) Select(ctx context.Context) ([]Iterator, []string, error) {
+	itrs, err := buildIterators(ctx, p.stmt, p.ic, p.opt)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -109,7 +111,8 @@ func (p *preparedStatement) Close() error {
 	return p.ic.Close()
 }
 
-func buildIterators(stmt *influxql.SelectStatement, ic IteratorCreator, opt IteratorOptions) ([]Iterator, error) {
+func buildIterators(ctx context.Context, stmt *influxql.SelectStatement, ic IteratorCreator, opt IteratorOptions) ([]Iterator, error) {
+	span := tracing.SpanFromContext(ctx)
 	// Retrieve refs for each call and var ref.
 	info := newSelectInfo(stmt)
 	if len(info.calls) > 1 && len(info.refs) > 0 {
@@ -125,7 +128,22 @@ func buildIterators(stmt *influxql.SelectStatement, ic IteratorCreator, opt Iter
 
 	// If there are multiple auxilary fields and no calls then construct an aux iterator.
 	if len(info.calls) == 0 && len(info.refs) > 0 {
-		return buildAuxIterators(stmt.Fields, ic, stmt.Sources, opt)
+		if span != nil {
+			span = span.StartSpan("auxiliary_iterators")
+			defer span.Finish()
+
+			span.SetLabels("statement", stmt.String())
+			ctx = tracing.NewContextWithSpan(ctx, span)
+		}
+		return buildAuxIterators(ctx, stmt.Fields, ic, stmt.Sources, opt)
+	}
+
+	if span != nil {
+		span = span.StartSpan("field_iterators")
+		defer span.Finish()
+
+		span.SetLabels("statement", stmt.String())
+		ctx = tracing.NewContextWithSpan(ctx, span)
 	}
 
 	// Include auxiliary fields from top() and bottom() when not writing the results.
@@ -167,18 +185,18 @@ func buildIterators(stmt *influxql.SelectStatement, ic IteratorCreator, opt Iter
 		}
 	}
 
-	return buildFieldIterators(fields, ic, stmt.Sources, opt, selector, stmt.Target != nil)
+	return buildFieldIterators(ctx, fields, ic, stmt.Sources, opt, selector, stmt.Target != nil)
 }
 
 // buildAuxIterators creates a set of iterators from a single combined auxiliary iterator.
-func buildAuxIterators(fields influxql.Fields, ic IteratorCreator, sources influxql.Sources, opt IteratorOptions) ([]Iterator, error) {
+func buildAuxIterators(ctx context.Context, fields influxql.Fields, ic IteratorCreator, sources influxql.Sources, opt IteratorOptions) ([]Iterator, error) {
 	// Create the auxiliary iterators for each source.
 	inputs := make([]Iterator, 0, len(sources))
 	if err := func() error {
 		for _, source := range sources {
 			switch source := source.(type) {
 			case *influxql.Measurement:
-				input, err := ic.CreateIterator(source, opt)
+				input, err := ic.CreateIterator(ctx, source, opt)
 				if err != nil {
 					return err
 				}
@@ -189,7 +207,7 @@ func buildAuxIterators(fields influxql.Fields, ic IteratorCreator, sources influ
 					stmt: source.Statement,
 				}
 
-				input, err := b.buildAuxIterator(opt)
+				input, err := b.buildAuxIterator(ctx, opt)
 				if err != nil {
 					return err
 				}
@@ -224,7 +242,6 @@ func buildAuxIterators(fields influxql.Fields, ic IteratorCreator, sources influ
 			input = NewDedupeIterator(input)
 		}
 	}
-
 	// Apply limit & offset.
 	if opt.Limit > 0 || opt.Offset > 0 {
 		input = NewLimitIterator(input, opt)
@@ -232,6 +249,7 @@ func buildAuxIterators(fields influxql.Fields, ic IteratorCreator, sources influ
 
 	// Wrap in an auxiliary iterator to separate the fields.
 	aitr := NewAuxIterator(input, opt)
+	tryAddAuxIteratorToContext(ctx, aitr)
 
 	// Generate iterators for each field.
 	itrs := make([]Iterator, len(fields))
@@ -304,9 +322,10 @@ func buildAuxIterator(expr influxql.Expr, aitr AuxIterator, opt IteratorOptions)
 }
 
 // buildFieldIterators creates an iterator for each field expression.
-func buildFieldIterators(fields influxql.Fields, ic IteratorCreator, sources influxql.Sources, opt IteratorOptions, selector, writeMode bool) ([]Iterator, error) {
+func buildFieldIterators(ctx context.Context, fields influxql.Fields, ic IteratorCreator, sources influxql.Sources, opt IteratorOptions, selector, writeMode bool) ([]Iterator, error) {
 	// Create iterators from fields against the iterator creator.
 	itrs := make([]Iterator, len(fields))
+	span := tracing.SpanFromContext(ctx)
 
 	if err := func() error {
 		hasAuxFields := false
@@ -321,8 +340,22 @@ func buildFieldIterators(fields influxql.Fields, ic IteratorCreator, sources inf
 				continue
 			}
 
+			var localSpan *tracing.Span
+			localContext := ctx
+
+			if span != nil {
+				localSpan = span.StartSpan("expression")
+				localSpan.SetLabels("expr", f.Expr.String())
+				localContext = tracing.NewContextWithSpan(ctx, localSpan)
+			}
+
 			expr := influxql.Reduce(f.Expr, nil)
-			itr, err := buildExprIterator(expr, ic, sources, opt, selector, writeMode)
+			itr, err := buildExprIterator(localContext, expr, ic, sources, opt, selector, writeMode)
+
+			if localSpan != nil {
+				localSpan.Finish()
+			}
+
 			if err != nil {
 				return err
 			} else if itr == nil {
@@ -344,6 +377,8 @@ func buildFieldIterators(fields influxql.Fields, ic IteratorCreator, sources inf
 		// Build the aux iterators. Previous validation should ensure that only one
 		// call was present so we build an AuxIterator from that input.
 		aitr := NewAuxIterator(input, opt)
+		tryAddAuxIteratorToContext(ctx, aitr)
+
 		for i, f := range fields {
 			if itrs[i] != nil {
 				itrs[i] = aitr
@@ -371,7 +406,7 @@ func buildFieldIterators(fields influxql.Fields, ic IteratorCreator, sources inf
 }
 
 // buildExprIterator creates an iterator for an expression.
-func buildExprIterator(expr influxql.Expr, ic IteratorCreator, sources influxql.Sources, opt IteratorOptions, selector, writeMode bool) (Iterator, error) {
+func buildExprIterator(ctx context.Context, expr influxql.Expr, ic IteratorCreator, sources influxql.Sources, opt IteratorOptions, selector, writeMode bool) (Iterator, error) {
 	opt.Expr = expr
 	b := exprIteratorBuilder{
 		ic:        ic,
@@ -383,13 +418,13 @@ func buildExprIterator(expr influxql.Expr, ic IteratorCreator, sources influxql.
 
 	switch expr := expr.(type) {
 	case *influxql.VarRef:
-		return b.buildVarRefIterator(expr)
+		return b.buildVarRefIterator(ctx, expr)
 	case *influxql.Call:
-		return b.buildCallIterator(expr)
+		return b.buildCallIterator(ctx, expr)
 	case *influxql.BinaryExpr:
-		return b.buildBinaryExprIterator(expr)
+		return b.buildBinaryExprIterator(ctx, expr)
 	case *influxql.ParenExpr:
-		return buildExprIterator(expr.Expr, ic, sources, opt, selector, writeMode)
+		return buildExprIterator(ctx, expr.Expr, ic, sources, opt, selector, writeMode)
 	case *influxql.NilLiteral:
 		return &nilFloatIterator{}, nil
 	default:
@@ -405,13 +440,13 @@ type exprIteratorBuilder struct {
 	writeMode bool
 }
 
-func (b *exprIteratorBuilder) buildVarRefIterator(expr *influxql.VarRef) (Iterator, error) {
+func (b *exprIteratorBuilder) buildVarRefIterator(ctx context.Context, expr *influxql.VarRef) (Iterator, error) {
 	inputs := make([]Iterator, 0, len(b.sources))
 	if err := func() error {
 		for _, source := range b.sources {
 			switch source := source.(type) {
 			case *influxql.Measurement:
-				input, err := b.ic.CreateIterator(source, b.opt)
+				input, err := b.ic.CreateIterator(ctx, source, b.opt)
 				if err != nil {
 					return err
 				}
@@ -422,7 +457,7 @@ func (b *exprIteratorBuilder) buildVarRefIterator(expr *influxql.VarRef) (Iterat
 					stmt: source.Statement,
 				}
 
-				input, err := subquery.buildVarRefIterator(expr, b.opt)
+				input, err := subquery.buildVarRefIterator(ctx, expr, b.opt)
 				if err != nil {
 					return err
 				}
@@ -448,7 +483,7 @@ func (b *exprIteratorBuilder) buildVarRefIterator(expr *influxql.VarRef) (Iterat
 	return itr, nil
 }
 
-func (b *exprIteratorBuilder) buildCallIterator(expr *influxql.Call) (Iterator, error) {
+func (b *exprIteratorBuilder) buildCallIterator(ctx context.Context, expr *influxql.Call) (Iterator, error) {
 	// TODO(jsternberg): Refactor this. This section needs to die in a fire.
 	opt := b.opt
 	// Eliminate limits and offsets if they were previously set. These are handled by the caller.
@@ -456,7 +491,7 @@ func (b *exprIteratorBuilder) buildCallIterator(expr *influxql.Call) (Iterator, 
 	switch expr.Name {
 	case "distinct":
 		opt.Ordered = true
-		input, err := buildExprIterator(expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, b.selector, false)
+		input, err := buildExprIterator(ctx, expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, b.selector, false)
 		if err != nil {
 			return nil, err
 		}
@@ -467,7 +502,7 @@ func (b *exprIteratorBuilder) buildCallIterator(expr *influxql.Call) (Iterator, 
 		return NewIntervalIterator(input, opt), nil
 	case "sample":
 		opt.Ordered = true
-		input, err := buildExprIterator(expr.Args[0], b.ic, b.sources, opt, b.selector, false)
+		input, err := buildExprIterator(ctx, expr.Args[0], b.ic, b.sources, opt, b.selector, false)
 		if err != nil {
 			return nil, err
 		}
@@ -476,7 +511,7 @@ func (b *exprIteratorBuilder) buildCallIterator(expr *influxql.Call) (Iterator, 
 		return newSampleIterator(input, opt, int(size.Val))
 	case "holt_winters", "holt_winters_with_fit":
 		opt.Ordered = true
-		input, err := buildExprIterator(expr.Args[0], b.ic, b.sources, opt, b.selector, false)
+		input, err := buildExprIterator(ctx, expr.Args[0], b.ic, b.sources, opt, b.selector, false)
 		if err != nil {
 			return nil, err
 		}
@@ -502,7 +537,7 @@ func (b *exprIteratorBuilder) buildCallIterator(expr *influxql.Call) (Iterator, 
 		}
 		opt.Ordered = true
 
-		input, err := buildExprIterator(expr.Args[0], b.ic, b.sources, opt, b.selector, false)
+		input, err := buildExprIterator(ctx, expr.Args[0], b.ic, b.sources, opt, b.selector, false)
 		if err != nil {
 			return nil, err
 		}
@@ -532,14 +567,14 @@ func (b *exprIteratorBuilder) buildCallIterator(expr *influxql.Call) (Iterator, 
 		panic(fmt.Sprintf("invalid series aggregate function: %s", expr.Name))
 	case "cumulative_sum":
 		opt.Ordered = true
-		input, err := buildExprIterator(expr.Args[0], b.ic, b.sources, opt, b.selector, false)
+		input, err := buildExprIterator(ctx, expr.Args[0], b.ic, b.sources, opt, b.selector, false)
 		if err != nil {
 			return nil, err
 		}
 		return newCumulativeSumIterator(input, opt)
 	case "integral":
 		opt.Ordered = true
-		input, err := buildExprIterator(expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, false, false)
+		input, err := buildExprIterator(ctx, expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, false, false)
 		if err != nil {
 			return nil, err
 		}
@@ -576,7 +611,7 @@ func (b *exprIteratorBuilder) buildCallIterator(expr *influxql.Call) (Iterator, 
 			builder.selector = true
 			builder.writeMode = false
 
-			i, err := builder.callIterator(call, callOpt)
+			i, err := builder.callIterator(ctx, call, callOpt)
 			if err != nil {
 				return nil, err
 			}
@@ -589,7 +624,7 @@ func (b *exprIteratorBuilder) buildCallIterator(expr *influxql.Call) (Iterator, 
 			builder.writeMode = false
 
 			ref := expr.Args[0].(*influxql.VarRef)
-			i, err := builder.buildVarRefIterator(ref)
+			i, err := builder.buildVarRefIterator(ctx, ref)
 			if err != nil {
 				return nil, err
 			}
@@ -629,7 +664,7 @@ func (b *exprIteratorBuilder) buildCallIterator(expr *influxql.Call) (Iterator, 
 			builder.selector = true
 			builder.writeMode = false
 
-			i, err := builder.callIterator(call, callOpt)
+			i, err := builder.callIterator(ctx, call, callOpt)
 			if err != nil {
 				return nil, err
 			}
@@ -642,7 +677,7 @@ func (b *exprIteratorBuilder) buildCallIterator(expr *influxql.Call) (Iterator, 
 			builder.writeMode = false
 
 			ref := expr.Args[0].(*influxql.VarRef)
-			i, err := builder.buildVarRefIterator(ref)
+			i, err := builder.buildVarRefIterator(ctx, ref)
 			if err != nil {
 				return nil, err
 			}
@@ -659,7 +694,7 @@ func (b *exprIteratorBuilder) buildCallIterator(expr *influxql.Call) (Iterator, 
 			switch arg0 := expr.Args[0].(type) {
 			case *influxql.Call:
 				if arg0.Name == "distinct" {
-					input, err := buildExprIterator(arg0, b.ic, b.sources, opt, b.selector, false)
+					input, err := buildExprIterator(ctx, arg0, b.ic, b.sources, opt, b.selector, false)
 					if err != nil {
 						return nil, err
 					}
@@ -668,36 +703,36 @@ func (b *exprIteratorBuilder) buildCallIterator(expr *influxql.Call) (Iterator, 
 			}
 			fallthrough
 		case "min", "max", "sum", "first", "last", "mean":
-			return b.callIterator(expr, opt)
+			return b.callIterator(ctx, expr, opt)
 		case "median":
 			opt.Ordered = true
-			input, err := buildExprIterator(expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, false, false)
+			input, err := buildExprIterator(ctx, expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, false, false)
 			if err != nil {
 				return nil, err
 			}
 			return newMedianIterator(input, opt)
 		case "mode":
-			input, err := buildExprIterator(expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, false, false)
+			input, err := buildExprIterator(ctx, expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, false, false)
 			if err != nil {
 				return nil, err
 			}
 			return NewModeIterator(input, opt)
 		case "stddev":
-			input, err := buildExprIterator(expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, false, false)
+			input, err := buildExprIterator(ctx, expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, false, false)
 			if err != nil {
 				return nil, err
 			}
 			return newStddevIterator(input, opt)
 		case "spread":
 			// OPTIMIZE(benbjohnson): convert to map/reduce
-			input, err := buildExprIterator(expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, false, false)
+			input, err := buildExprIterator(ctx, expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, false, false)
 			if err != nil {
 				return nil, err
 			}
 			return newSpreadIterator(input, opt)
 		case "percentile":
 			opt.Ordered = true
-			input, err := buildExprIterator(expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, false, false)
+			input, err := buildExprIterator(ctx, expr.Args[0].(*influxql.VarRef), b.ic, b.sources, opt, false, false)
 			if err != nil {
 				return nil, err
 			}
@@ -730,7 +765,7 @@ func (b *exprIteratorBuilder) buildCallIterator(expr *influxql.Call) (Iterator, 
 	return itr, nil
 }
 
-func (b *exprIteratorBuilder) buildBinaryExprIterator(expr *influxql.BinaryExpr) (Iterator, error) {
+func (b *exprIteratorBuilder) buildBinaryExprIterator(ctx context.Context, expr *influxql.BinaryExpr) (Iterator, error) {
 	if rhs, ok := expr.RHS.(influxql.Literal); ok {
 		// The right hand side is a literal. It is more common to have the RHS be a literal,
 		// so we check that one first and have this be the happy path.
@@ -739,24 +774,24 @@ func (b *exprIteratorBuilder) buildBinaryExprIterator(expr *influxql.BinaryExpr)
 			return nil, fmt.Errorf("unable to construct an iterator from two literals: LHS: %T, RHS: %T", lhs, rhs)
 		}
 
-		lhs, err := buildExprIterator(expr.LHS, b.ic, b.sources, b.opt, b.selector, false)
+		lhs, err := buildExprIterator(ctx, expr.LHS, b.ic, b.sources, b.opt, b.selector, false)
 		if err != nil {
 			return nil, err
 		}
 		return buildRHSTransformIterator(lhs, rhs, expr.Op, b.opt)
 	} else if lhs, ok := expr.LHS.(influxql.Literal); ok {
-		rhs, err := buildExprIterator(expr.RHS, b.ic, b.sources, b.opt, b.selector, false)
+		rhs, err := buildExprIterator(ctx, expr.RHS, b.ic, b.sources, b.opt, b.selector, false)
 		if err != nil {
 			return nil, err
 		}
 		return buildLHSTransformIterator(lhs, rhs, expr.Op, b.opt)
 	} else {
 		// We have two iterators. Combine them into a single iterator.
-		lhs, err := buildExprIterator(expr.LHS, b.ic, b.sources, b.opt, false, false)
+		lhs, err := buildExprIterator(ctx, expr.LHS, b.ic, b.sources, b.opt, false, false)
 		if err != nil {
 			return nil, err
 		}
-		rhs, err := buildExprIterator(expr.RHS, b.ic, b.sources, b.opt, false, false)
+		rhs, err := buildExprIterator(ctx, expr.RHS, b.ic, b.sources, b.opt, false, false)
 		if err != nil {
 			return nil, err
 		}
@@ -764,13 +799,13 @@ func (b *exprIteratorBuilder) buildBinaryExprIterator(expr *influxql.BinaryExpr)
 	}
 }
 
-func (b *exprIteratorBuilder) callIterator(expr *influxql.Call, opt IteratorOptions) (Iterator, error) {
+func (b *exprIteratorBuilder) callIterator(ctx context.Context, expr *influxql.Call, opt IteratorOptions) (Iterator, error) {
 	inputs := make([]Iterator, 0, len(b.sources))
 	if err := func() error {
 		for _, source := range b.sources {
 			switch source := source.(type) {
 			case *influxql.Measurement:
-				input, err := b.ic.CreateIterator(source, opt)
+				input, err := b.ic.CreateIterator(ctx, source, opt)
 				if err != nil {
 					return err
 				}
@@ -779,7 +814,7 @@ func (b *exprIteratorBuilder) callIterator(expr *influxql.Call, opt IteratorOpti
 				// Identify the name of the field we are using.
 				arg0 := expr.Args[0].(*influxql.VarRef)
 
-				input, err := buildExprIterator(arg0, b.ic, []influxql.Source{source}, opt, b.selector, false)
+				input, err := buildExprIterator(ctx, arg0, b.ic, []influxql.Source{source}, opt, b.selector, false)
 				if err != nil {
 					return err
 				}
@@ -810,6 +845,13 @@ func (b *exprIteratorBuilder) callIterator(expr *influxql.Call, opt IteratorOpti
 }
 
 func buildRHSTransformIterator(lhs Iterator, rhs influxql.Literal, op influxql.Token, opt IteratorOptions) (Iterator, error) {
+	itrType, litType := iteratorDataType(lhs), literalDataType(rhs)
+	if litType == influxql.Unsigned && itrType == influxql.Integer {
+		// If the literal is unsigned but the iterator is an integer, return
+		// an error since we cannot add an unsigned to an integer.
+		return nil, fmt.Errorf("cannot use %s with an integer and unsigned", op)
+	}
+
 	fn := binaryExprFunc(iteratorDataType(lhs), literalDataType(rhs), op)
 	switch fn := fn.(type) {
 	case func(float64, float64) float64:
@@ -819,6 +861,8 @@ func buildRHSTransformIterator(lhs Iterator, rhs influxql.Literal, op influxql.T
 			input = lhs
 		case IntegerIterator:
 			input = &integerFloatCastIterator{input: lhs}
+		case UnsignedIterator:
+			input = &unsignedFloatCastIterator{input: lhs}
 		default:
 			return nil, fmt.Errorf("type mismatch on LHS, unable to use %T as a FloatIterator", lhs)
 		}
@@ -828,6 +872,8 @@ func buildRHSTransformIterator(lhs Iterator, rhs influxql.Literal, op influxql.T
 		case *influxql.NumberLiteral:
 			val = rhs.Val
 		case *influxql.IntegerLiteral:
+			val = float64(rhs.Val)
+		case *influxql.UnsignedLiteral:
 			val = float64(rhs.Val)
 		default:
 			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as a NumberLiteral", rhs)
@@ -885,6 +931,8 @@ func buildRHSTransformIterator(lhs Iterator, rhs influxql.Literal, op influxql.T
 			input = lhs
 		case IntegerIterator:
 			input = &integerFloatCastIterator{input: lhs}
+		case UnsignedIterator:
+			input = &unsignedFloatCastIterator{input: lhs}
 		default:
 			return nil, fmt.Errorf("type mismatch on LHS, unable to use %T as a FloatIterator", lhs)
 		}
@@ -894,6 +942,8 @@ func buildRHSTransformIterator(lhs Iterator, rhs influxql.Literal, op influxql.T
 		case *influxql.NumberLiteral:
 			val = rhs.Val
 		case *influxql.IntegerLiteral:
+			val = float64(rhs.Val)
+		case *influxql.UnsignedLiteral:
 			val = float64(rhs.Val)
 		default:
 			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as a NumberLiteral", rhs)
@@ -966,6 +1016,81 @@ func buildRHSTransformIterator(lhs Iterator, rhs influxql.Literal, op influxql.T
 		return &integerBoolTransformIterator{
 			input: input,
 			fn: func(p *IntegerPoint) *BooleanPoint {
+				if p == nil {
+					return nil
+				}
+
+				bp := &BooleanPoint{
+					Name: p.Name,
+					Tags: p.Tags,
+					Time: p.Time,
+					Aux:  p.Aux,
+				}
+				if p.Nil {
+					bp.Nil = true
+				} else {
+					bp.Value = fn(p.Value, val)
+				}
+				return bp
+			},
+		}, nil
+	case func(uint64, uint64) uint64:
+		var input UnsignedIterator
+		switch lhs := lhs.(type) {
+		case UnsignedIterator:
+			input = lhs
+		default:
+			return nil, fmt.Errorf("type mismatch on LHS, unable to use %T as a FloatIterator", lhs)
+		}
+
+		var val uint64
+		switch rhs := rhs.(type) {
+		case *influxql.IntegerLiteral:
+			if rhs.Val < 0 {
+				return nil, fmt.Errorf("cannot use negative integer '%s' in math with unsigned", rhs)
+			}
+			val = uint64(rhs.Val)
+		case *influxql.UnsignedLiteral:
+			val = rhs.Val
+		default:
+			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as a NumberLiteral", rhs)
+		}
+		return &unsignedTransformIterator{
+			input: input,
+			fn: func(p *UnsignedPoint) *UnsignedPoint {
+				if p == nil {
+					return nil
+				} else if p.Nil {
+					return p
+				}
+				p.Value = fn(p.Value, val)
+				return p
+			},
+		}, nil
+	case func(uint64, uint64) bool:
+		var input UnsignedIterator
+		switch lhs := lhs.(type) {
+		case UnsignedIterator:
+			input = lhs
+		default:
+			return nil, fmt.Errorf("type mismatch on LHS, unable to use %T as a FloatIterator", lhs)
+		}
+
+		var val uint64
+		switch rhs := rhs.(type) {
+		case *influxql.IntegerLiteral:
+			if rhs.Val < 0 {
+				return nil, fmt.Errorf("cannot use negative integer '%s' in math with unsigned", rhs)
+			}
+			val = uint64(rhs.Val)
+		case *influxql.UnsignedLiteral:
+			val = rhs.Val
+		default:
+			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as a NumberLiteral", rhs)
+		}
+		return &unsignedBoolTransformIterator{
+			input: input,
+			fn: func(p *UnsignedPoint) *BooleanPoint {
 				if p == nil {
 					return nil
 				}
@@ -1026,7 +1151,14 @@ func buildRHSTransformIterator(lhs Iterator, rhs influxql.Literal, op influxql.T
 }
 
 func buildLHSTransformIterator(lhs influxql.Literal, rhs Iterator, op influxql.Token, opt IteratorOptions) (Iterator, error) {
-	fn := binaryExprFunc(literalDataType(lhs), iteratorDataType(rhs), op)
+	litType, itrType := literalDataType(lhs), iteratorDataType(rhs)
+	if litType == influxql.Unsigned && itrType == influxql.Integer {
+		// If the literal is unsigned but the iterator is an integer, return
+		// an error since we cannot add an unsigned to an integer.
+		return nil, fmt.Errorf("cannot use %s with unsigned and an integer", op)
+	}
+
+	fn := binaryExprFunc(litType, itrType, op)
 	switch fn := fn.(type) {
 	case func(float64, float64) float64:
 		var input FloatIterator
@@ -1035,6 +1167,8 @@ func buildLHSTransformIterator(lhs influxql.Literal, rhs Iterator, op influxql.T
 			input = rhs
 		case IntegerIterator:
 			input = &integerFloatCastIterator{input: rhs}
+		case UnsignedIterator:
+			input = &unsignedFloatCastIterator{input: rhs}
 		default:
 			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as a FloatIterator", rhs)
 		}
@@ -1044,6 +1178,8 @@ func buildLHSTransformIterator(lhs influxql.Literal, rhs Iterator, op influxql.T
 		case *influxql.NumberLiteral:
 			val = lhs.Val
 		case *influxql.IntegerLiteral:
+			val = float64(lhs.Val)
+		case *influxql.UnsignedLiteral:
 			val = float64(lhs.Val)
 		default:
 			return nil, fmt.Errorf("type mismatch on LHS, unable to use %T as a NumberLiteral", lhs)
@@ -1101,6 +1237,8 @@ func buildLHSTransformIterator(lhs influxql.Literal, rhs Iterator, op influxql.T
 			input = rhs
 		case IntegerIterator:
 			input = &integerFloatCastIterator{input: rhs}
+		case UnsignedIterator:
+			input = &unsignedFloatCastIterator{input: rhs}
 		default:
 			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as a FloatIterator", rhs)
 		}
@@ -1110,6 +1248,8 @@ func buildLHSTransformIterator(lhs influxql.Literal, rhs Iterator, op influxql.T
 		case *influxql.NumberLiteral:
 			val = lhs.Val
 		case *influxql.IntegerLiteral:
+			val = float64(lhs.Val)
+		case *influxql.UnsignedLiteral:
 			val = float64(lhs.Val)
 		default:
 			return nil, fmt.Errorf("type mismatch on LHS, unable to use %T as a NumberLiteral", lhs)
@@ -1200,6 +1340,81 @@ func buildLHSTransformIterator(lhs influxql.Literal, rhs Iterator, op influxql.T
 				return bp
 			},
 		}, nil
+	case func(uint64, uint64) uint64:
+		var input UnsignedIterator
+		switch rhs := rhs.(type) {
+		case UnsignedIterator:
+			input = rhs
+		default:
+			return nil, fmt.Errorf("type mismatch on LHS, unable to use %T as a FloatIterator", lhs)
+		}
+
+		var val uint64
+		switch lhs := lhs.(type) {
+		case *influxql.IntegerLiteral:
+			if lhs.Val < 0 {
+				return nil, fmt.Errorf("cannot use negative integer '%s' in math with unsigned", rhs)
+			}
+			val = uint64(lhs.Val)
+		case *influxql.UnsignedLiteral:
+			val = lhs.Val
+		default:
+			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as a NumberLiteral", rhs)
+		}
+		return &unsignedTransformIterator{
+			input: input,
+			fn: func(p *UnsignedPoint) *UnsignedPoint {
+				if p == nil {
+					return nil
+				} else if p.Nil {
+					return p
+				}
+				p.Value = fn(val, p.Value)
+				return p
+			},
+		}, nil
+	case func(uint64, uint64) bool:
+		var input UnsignedIterator
+		switch rhs := rhs.(type) {
+		case UnsignedIterator:
+			input = rhs
+		default:
+			return nil, fmt.Errorf("type mismatch on LHS, unable to use %T as a FloatIterator", lhs)
+		}
+
+		var val uint64
+		switch lhs := lhs.(type) {
+		case *influxql.IntegerLiteral:
+			if lhs.Val < 0 {
+				return nil, fmt.Errorf("cannot use negative integer '%s' in math with unsigned", rhs)
+			}
+			val = uint64(lhs.Val)
+		case *influxql.UnsignedLiteral:
+			val = lhs.Val
+		default:
+			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as a NumberLiteral", rhs)
+		}
+		return &unsignedBoolTransformIterator{
+			input: input,
+			fn: func(p *UnsignedPoint) *BooleanPoint {
+				if p == nil {
+					return nil
+				}
+
+				bp := &BooleanPoint{
+					Name: p.Name,
+					Tags: p.Tags,
+					Time: p.Time,
+					Aux:  p.Aux,
+				}
+				if p.Nil {
+					bp.Nil = true
+				} else {
+					bp.Value = fn(val, p.Value)
+				}
+				return bp
+			},
+		}, nil
 	case func(bool, bool) bool:
 		var input BooleanIterator
 		switch rhs := rhs.(type) {
@@ -1242,7 +1457,14 @@ func buildLHSTransformIterator(lhs influxql.Literal, rhs Iterator, op influxql.T
 }
 
 func buildTransformIterator(lhs Iterator, rhs Iterator, op influxql.Token, opt IteratorOptions) (Iterator, error) {
-	fn := binaryExprFunc(iteratorDataType(lhs), iteratorDataType(rhs), op)
+	lhsType, rhsType := iteratorDataType(lhs), iteratorDataType(rhs)
+	if lhsType == influxql.Integer && rhsType == influxql.Unsigned {
+		return nil, fmt.Errorf("cannot use %s between an integer and unsigned, an explicit cast is required", op)
+	} else if lhsType == influxql.Unsigned && rhsType == influxql.Integer {
+		return nil, fmt.Errorf("cannot use %s between unsigned and an integer, an explicit cast is required", op)
+	}
+
+	fn := binaryExprFunc(lhsType, rhsType, op)
 	switch fn := fn.(type) {
 	case func(float64, float64) float64:
 		var left FloatIterator
@@ -1251,6 +1473,8 @@ func buildTransformIterator(lhs Iterator, rhs Iterator, op influxql.Token, opt I
 			left = lhs
 		case IntegerIterator:
 			left = &integerFloatCastIterator{input: lhs}
+		case UnsignedIterator:
+			left = &unsignedFloatCastIterator{input: lhs}
 		default:
 			return nil, fmt.Errorf("type mismatch on LHS, unable to use %T as a FloatIterator", lhs)
 		}
@@ -1261,6 +1485,8 @@ func buildTransformIterator(lhs Iterator, rhs Iterator, op influxql.Token, opt I
 			right = rhs
 		case IntegerIterator:
 			right = &integerFloatCastIterator{input: rhs}
+		case UnsignedIterator:
+			right = &unsignedFloatCastIterator{input: rhs}
 		default:
 			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as a FloatIterator", rhs)
 		}
@@ -1285,6 +1511,16 @@ func buildTransformIterator(lhs Iterator, rhs Iterator, op influxql.Token, opt I
 			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as a IntegerIterator", rhs)
 		}
 		return newIntegerExprIterator(left, right, opt, fn), nil
+	case func(uint64, uint64) uint64:
+		left, ok := lhs.(UnsignedIterator)
+		if !ok {
+			return nil, fmt.Errorf("type mismatch on LHS, unable to use %T as an UnsignedIterator", lhs)
+		}
+		right, ok := rhs.(UnsignedIterator)
+		if !ok {
+			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as an UnsignedIterator", lhs)
+		}
+		return newUnsignedExprIterator(left, right, opt, fn), nil
 	case func(float64, float64) bool:
 		var left FloatIterator
 		switch lhs := lhs.(type) {
@@ -1292,6 +1528,8 @@ func buildTransformIterator(lhs Iterator, rhs Iterator, op influxql.Token, opt I
 			left = lhs
 		case IntegerIterator:
 			left = &integerFloatCastIterator{input: lhs}
+		case UnsignedIterator:
+			left = &unsignedFloatCastIterator{input: lhs}
 		default:
 			return nil, fmt.Errorf("type mismatch on LHS, unable to use %T as a FloatIterator", lhs)
 		}
@@ -1302,6 +1540,8 @@ func buildTransformIterator(lhs Iterator, rhs Iterator, op influxql.Token, opt I
 			right = rhs
 		case IntegerIterator:
 			right = &integerFloatCastIterator{input: rhs}
+		case UnsignedIterator:
+			right = &unsignedFloatCastIterator{input: rhs}
 		default:
 			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as a FloatIterator", rhs)
 		}
@@ -1316,6 +1556,16 @@ func buildTransformIterator(lhs Iterator, rhs Iterator, op influxql.Token, opt I
 			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as a IntegerIterator", rhs)
 		}
 		return newIntegerBooleanExprIterator(left, right, opt, fn), nil
+	case func(uint64, uint64) bool:
+		left, ok := lhs.(UnsignedIterator)
+		if !ok {
+			return nil, fmt.Errorf("type mismatch on LHS, unable to use %T as an UnsignedIterator", lhs)
+		}
+		right, ok := rhs.(UnsignedIterator)
+		if !ok {
+			return nil, fmt.Errorf("type mismatch on RHS, unable to use %T as an UnsignedIterator", lhs)
+		}
+		return newUnsignedBooleanExprIterator(left, right, opt, fn), nil
 	case func(bool, bool) bool:
 		left, ok := lhs.(BooleanIterator)
 		if !ok {
@@ -1336,6 +1586,8 @@ func iteratorDataType(itr Iterator) influxql.DataType {
 		return influxql.Float
 	case IntegerIterator:
 		return influxql.Integer
+	case UnsignedIterator:
+		return influxql.Unsigned
 	case StringIterator:
 		return influxql.String
 	case BooleanIterator:
@@ -1351,6 +1603,8 @@ func literalDataType(lit influxql.Literal) influxql.DataType {
 		return influxql.Float
 	case *influxql.IntegerLiteral:
 		return influxql.Integer
+	case *influxql.UnsignedLiteral:
+		return influxql.Unsigned
 	case *influxql.StringLiteral:
 		return influxql.String
 	case *influxql.BooleanLiteral:
@@ -1369,8 +1623,53 @@ func binaryExprFunc(typ1 influxql.DataType, typ2 influxql.DataType, op influxql.
 		switch typ2 {
 		case influxql.Float:
 			fn = floatBinaryExprFunc(op)
+		case influxql.Unsigned:
+			// Special case for LT, LTE, GT, and GTE.
+			fn = unsignedBinaryExprFunc(op)
 		default:
 			fn = integerBinaryExprFunc(op)
+		}
+	case influxql.Unsigned:
+		switch typ2 {
+		case influxql.Float:
+			fn = floatBinaryExprFunc(op)
+		case influxql.Integer:
+			// Special case for LT, LTE, GT, and GTE.
+			// Since the RHS is an integer, we need to check if it is less than
+			// zero for the comparison operators to not be subject to overflow.
+			switch op {
+			case influxql.LT:
+				return func(lhs, rhs uint64) bool {
+					if int64(rhs) < 0 {
+						return false
+					}
+					return lhs < rhs
+				}
+			case influxql.LTE:
+				return func(lhs, rhs uint64) bool {
+					if int64(rhs) < 0 {
+						return false
+					}
+					return lhs <= rhs
+				}
+			case influxql.GT:
+				return func(lhs, rhs uint64) bool {
+					if int64(rhs) < 0 {
+						return true
+					}
+					return lhs > rhs
+				}
+			case influxql.GTE:
+				return func(lhs, rhs uint64) bool {
+					if int64(rhs) < 0 {
+						return true
+					}
+					return lhs >= rhs
+				}
+			}
+			fallthrough
+		default:
+			fn = unsignedBinaryExprFunc(op)
 		}
 	case influxql.Boolean:
 		fn = booleanBinaryExprFunc(op)
@@ -1451,6 +1750,50 @@ func integerBinaryExprFunc(op influxql.Token) interface{} {
 		return func(lhs, rhs int64) bool { return lhs > rhs }
 	case influxql.GTE:
 		return func(lhs, rhs int64) bool { return lhs >= rhs }
+	}
+	return nil
+}
+
+func unsignedBinaryExprFunc(op influxql.Token) interface{} {
+	switch op {
+	case influxql.ADD:
+		return func(lhs, rhs uint64) uint64 { return lhs + rhs }
+	case influxql.SUB:
+		return func(lhs, rhs uint64) uint64 { return lhs - rhs }
+	case influxql.MUL:
+		return func(lhs, rhs uint64) uint64 { return lhs * rhs }
+	case influxql.DIV:
+		return func(lhs, rhs uint64) uint64 {
+			if rhs == 0 {
+				return uint64(0)
+			}
+			return lhs / rhs
+		}
+	case influxql.MOD:
+		return func(lhs, rhs uint64) uint64 {
+			if rhs == 0 {
+				return uint64(0)
+			}
+			return lhs % rhs
+		}
+	case influxql.BITWISE_AND:
+		return func(lhs, rhs uint64) uint64 { return lhs & rhs }
+	case influxql.BITWISE_OR:
+		return func(lhs, rhs uint64) uint64 { return lhs | rhs }
+	case influxql.BITWISE_XOR:
+		return func(lhs, rhs uint64) uint64 { return lhs ^ rhs }
+	case influxql.EQ:
+		return func(lhs, rhs uint64) bool { return lhs == rhs }
+	case influxql.NEQ:
+		return func(lhs, rhs uint64) bool { return lhs != rhs }
+	case influxql.LT:
+		return func(lhs, rhs uint64) bool { return lhs < rhs }
+	case influxql.LTE:
+		return func(lhs, rhs uint64) bool { return lhs <= rhs }
+	case influxql.GT:
+		return func(lhs, rhs uint64) bool { return lhs > rhs }
+	case influxql.GTE:
+		return func(lhs, rhs uint64) bool { return lhs >= rhs }
 	}
 	return nil
 }

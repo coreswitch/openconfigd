@@ -19,7 +19,6 @@ import (
 	"sync"
 	// "sync/atomic"
 
-	"github.com/influxdata/influxdb/influxql"
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/pkg/bytesutil"
 	"github.com/influxdata/influxdb/pkg/escape"
@@ -27,6 +26,7 @@ import (
 	"github.com/influxdata/influxdb/pkg/estimator/hll"
 	"github.com/influxdata/influxdb/query"
 	"github.com/influxdata/influxdb/tsdb"
+	"github.com/influxdata/influxql"
 	"github.com/uber-go/zap"
 )
 
@@ -277,7 +277,7 @@ func (i *Index) MeasurementTagKeysByExpr(name []byte, expr influxql.Expr) (map[s
 //
 // See tsm1.Engine.MeasurementTagKeyValuesByExpr for a fuller description of this
 // method.
-func (i *Index) MeasurementTagKeyValuesByExpr(name []byte, keys []string, expr influxql.Expr, keysSorted bool) ([][]string, error) {
+func (i *Index) MeasurementTagKeyValuesByExpr(auth query.Authorizer, name []byte, keys []string, expr influxql.Expr, keysSorted bool) ([][]string, error) {
 	i.mu.RLock()
 	mm := i.measurements[string(name)]
 	i.mu.RUnlock()
@@ -296,7 +296,7 @@ func (i *Index) MeasurementTagKeyValuesByExpr(name []byte, keys []string, expr i
 	ids, _, _ := mm.WalkWhereForSeriesIds(expr)
 	if ids.Len() == 0 && expr == nil {
 		for ki, key := range keys {
-			values := mm.TagValues(key)
+			values := mm.TagValues(auth, key)
 			sort.Sort(sort.StringSlice(values))
 			results[ki] = values
 		}
@@ -321,6 +321,9 @@ func (i *Index) MeasurementTagKeyValuesByExpr(name []byte, keys []string, expr i
 	for _, id := range ids {
 		s := mm.SeriesByID(id)
 		if s == nil {
+			continue
+		}
+		if auth != nil && !auth.AuthorizeSeriesRead(i.database, s.Measurement().name, s.Tags()) {
 			continue
 		}
 
@@ -513,18 +516,20 @@ func (i *Index) measurementNamesByTagFilters(filter *TagFilter) [][]byte {
 
 		// If the operator is non-regex, only check the specified value.
 		if filter.Op == influxql.EQ || filter.Op == influxql.NEQ {
-			if _, ok := tagVals[filter.Value]; ok {
+			if tagVals.Contains(filter.Value) {
 				tagMatch = true
 			}
 		} else {
 			// Else, the operator is a regex and we have to check all tag
 			// values against the regular expression.
-			for tagVal := range tagVals {
-				if filter.Regex.MatchString(tagVal) {
+			tagVals.Range(func(k string, _ SeriesIDs) bool {
+				if filter.Regex.MatchString(k) {
 					tagMatch = true
-					continue
 				}
-			}
+				// If a tag matches then the Range over remaining tags can be
+				// ceased.
+				return !tagMatch
+			})
 		}
 
 		//
@@ -710,6 +715,9 @@ func (i *Index) MeasurementSeriesKeysByExpr(name []byte, condition influxql.Expr
 
 // SeriesPointIterator returns an influxql iterator over all series.
 func (i *Index) SeriesPointIterator(opt query.IteratorOptions) (query.Iterator, error) {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+
 	// Read and sort all measurements.
 	mms := make(Measurements, 0, len(i.measurements))
 	for _, mm := range i.measurements {
