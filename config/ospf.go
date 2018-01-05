@@ -64,7 +64,9 @@ password 8 AU67iiPSXYm96
 service password-encryption
 !
 router ospf
-  redistribute bgp
+ redistribute bgp metric-type 1
+ redistribute connected metric-type 1
+ distance 220
 {{range $i, $v := .OspfArray}}  network {{$v.Network}} area {{$v.Area}}
 {{end}}
 !
