@@ -150,6 +150,9 @@ func YangConfigPull(Args []string) {
 }
 
 func YParseSet(param *cmd.Param) (int, cmd.Callback, []interface{}, cmd.CompSlice) {
+	SubscribeMutex.Lock()
+	defer SubscribeMutex.Unlock()
+
 	// Trim "set"
 	if len(param.Command) > 0 {
 		param.Command = param.Command[1:]
@@ -168,8 +171,6 @@ func YParseSet(param *cmd.Param) (int, cmd.Callback, []interface{}, cmd.CompSlic
 
 func ProcessDelete(config *Config) {
 	//fmt.Println("SubscribeMutex.Lock ProcessDelete")
-	SubscribeMutex.Lock()
-	defer SubscribeMutex.Unlock()
 	Delete(config, true)
 }
 
@@ -780,6 +781,9 @@ func ParseDelete(cmds []string, config *Config, s *YMatchState) (int, cmd.Callba
 }
 
 func YParseDelete(param *cmd.Param) (int, cmd.Callback, []interface{}, cmd.CompSlice) {
+	SubscribeMutex.Lock()
+	defer SubscribeMutex.Unlock()
+
 	// Trim "delete"
 	if len(param.Command) > 0 {
 		param.Command = param.Command[1:]

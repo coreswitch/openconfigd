@@ -846,6 +846,9 @@ func (c *Config) WriteTo(path string, by ...string) {
 }
 
 func ConfigDiscard() bool {
+	SubscribeMutex.Lock()
+	defer SubscribeMutex.Unlock()
+
 	diff := CompareCommand()
 	if diff != "" {
 		configCandidate = configActive.Copy(nil)
