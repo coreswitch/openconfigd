@@ -360,7 +360,7 @@ func (this *CliComponent) Start() component.Component {
 	run := mode.Parser.Lookup("run")
 	run.LinkNodes(opNode)
 
-	Parser.InstallLine("system hostname WORD", HostnameApi)
+	Parser.InstallLine("system host-name WORD", HostnameApi)
 	Parser.InstallLine("system etcd endpoints WORD", EtcdEndpointsApi)
 	Parser.InstallLine("system etcd path WORD", EtcdPathApi)
 	Parser.InstallLine("interfaces interface WORD dhcp-relay-group WORD", RelayApi)
