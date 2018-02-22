@@ -17,7 +17,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
@@ -384,6 +383,7 @@ func GobgpSetZebra(client *client.Client, cfg *GobgpConfig, version uint8) {
 	zebra.Config.Enabled = true
 	zebra.Config.Url = "unix:/var/run/zserv.api"
 	zebra.Config.Version = version
+	zebra.Config.RedistributeRouteTypeList = []bgpconfig.InstallProtocolType{"bgp", "ospf"}
 	err := client.EnableZebra(zebra)
 	if err != nil {
 		if strings.Contains(err.Error(), "zserv") && !GobgpZebraRetry {
@@ -1028,9 +1028,6 @@ var GobgpWanProcess *process.Process
 var gobgpWanConfigLocal GobgpConfig
 var gobgpWanConfigGohan GobgpConfig
 
-// GoBGP WAN IP address.
-var gobgpWanAddress = map[string]string{}
-
 func GobgpSetRib(client *client.Client, cfg *GobgpConfig) {
 	for _, r := range cfg.Ribs {
 		path, err := GobgpVrfPath(&r)
@@ -1079,46 +1076,6 @@ func GobgpWanConfig(cfg *GobgpConfig) {
 	GobgpSetPolicyDefinition(c, cfg)
 	GobgpSetGlobalPolicy(c, cfg)
 	GobgpSetRib(c, cfg)
-
-	// WAN IP Address.
-	GobgpWanAddressClear()
-	if len(cfg.Interfaces.Interface) > 0 {
-		ifp := cfg.Interfaces.Interface[0]
-		ifName := ifp.Name
-
-		speed := "1000"
-		switch ifp.Speed {
-		case "100":
-			speed = "100"
-		case "10":
-			speed = "10"
-		}
-		duplex := "full"
-		if ifp.Duplex == "half" {
-			duplex = "half"
-		}
-		fmt.Println(speed, duplex)
-		err := exec.Command("ethtool", "-s", ifName, "duplex", duplex, "speed", speed).Run()
-		if err != nil {
-			fmt.Println("ethtool exec err:", err)
-		}
-
-		if len(ifp.IPv4.Address) > 0 {
-			ifAddr := ifp.IPv4.Address[0].Ip
-			fmt.Println("Setting WAN IP address:", ifName, ifAddr)
-			ExecLine(fmt.Sprintf("set interfaces interface %s ipv4 address %s", ifName, ifAddr))
-			Commit()
-			gobgpWanAddress[ifName] = ifAddr
-		}
-	}
-}
-
-func GobgpWanAddressClear() {
-	for ifName, ifAddr := range gobgpWanAddress {
-		ExecLine(fmt.Sprintf("delete interfaces interface %s ipv4 address %s", ifName, ifAddr))
-	}
-	Commit()
-	gobgpWanAddress = map[string]string{}
 }
 
 // GoBGP WAN
@@ -1180,7 +1137,10 @@ func GobgpWanStop(local bool) {
 }
 
 func GobgpWanExit() {
-	GobgpWanAddressClear()
+	if GobgpWanProcess != nil {
+		process.ProcessUnregister(GobgpWanProcess)
+		GobgpWanProcess = nil
+	}
 }
 
 func stringToCommunityValue(comStr string) uint32 {
