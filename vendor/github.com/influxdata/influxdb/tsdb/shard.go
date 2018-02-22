@@ -738,12 +738,12 @@ func (s *Shard) MeasurementsSketches() (estimator.Sketch, estimator.Sketch, erro
 
 // MeasurementNamesByExpr returns names of measurements matching the condition.
 // If cond is nil then all measurement names are returned.
-func (s *Shard) MeasurementNamesByExpr(cond influxql.Expr) ([][]byte, error) {
+func (s *Shard) MeasurementNamesByExpr(auth query.Authorizer, cond influxql.Expr) ([][]byte, error) {
 	engine, err := s.engine()
 	if err != nil {
 		return nil, err
 	}
-	return engine.MeasurementNamesByExpr(cond)
+	return engine.MeasurementNamesByExpr(auth, cond)
 }
 
 // MeasurementNamesByRegex returns names of measurements matching the regular expression.
@@ -763,6 +763,16 @@ func (s *Shard) MeasurementSeriesKeysByExpr(name []byte, expr influxql.Expr) ([]
 		return nil, err
 	}
 	return engine.MeasurementSeriesKeysByExpr(name, expr)
+}
+
+// TagKeyHasAuthorizedSeries determines if there exists an authorised series on
+// the provided measurement with the provided tag key.
+func (s *Shard) TagKeyHasAuthorizedSeries(auth query.Authorizer, name []byte, key string) bool {
+	engine, err := s.engine()
+	if err != nil {
+		return false
+	}
+	return engine.TagKeyHasAuthorizedSeries(auth, name, key)
 }
 
 // MeasurementTagKeysByExpr returns all the tag keys for the provided expression.
@@ -1584,7 +1594,9 @@ func NewFieldKeysIterator(engine Engine, opt query.IteratorOptions) (query.Itera
 	itr := &fieldKeysIterator{engine: engine}
 
 	// Retrieve measurements from shard. Filter if condition specified.
-	names, err := engine.MeasurementNamesByExpr(opt.Condition)
+	//
+	// FGA is currently not supported when retrieving field keys.
+	names, err := engine.MeasurementNamesByExpr(query.OpenAuthorizer, opt.Condition)
 	if err != nil {
 		return nil, err
 	}
@@ -1674,7 +1686,7 @@ type measurementKeyFunc func(name []byte) ([][]byte, error)
 
 func newMeasurementKeysIterator(engine Engine, fn measurementKeyFunc, opt query.IteratorOptions) (*measurementKeysIterator, error) {
 	itr := &measurementKeysIterator{fn: fn}
-	names, err := engine.MeasurementNamesByExpr(opt.Condition)
+	names, err := engine.MeasurementNamesByExpr(opt.Authorizer, opt.Condition)
 	if err != nil {
 		return nil, err
 	}

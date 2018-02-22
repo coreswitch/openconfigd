@@ -1,7 +1,7 @@
 package uuid
 
 import (
-	"gopkg.in/stretchr/testify.v1/assert"
+	"github.com/stretchr/testify/assert"
 	"regexp"
 	"strings"
 	"testing"
@@ -41,7 +41,7 @@ var (
 )
 
 func TestSwitchFormat(t *testing.T) {
-	ids := []Implementation{NewV4(), NewV4()}
+	ids := []UUID{NewV4(), NewV4()}
 
 	// Reset default
 	SwitchFormat(FormatCanonical)
@@ -76,7 +76,7 @@ func didSwitchFormatPanic(pFormat string) bool {
 }
 
 func TestSwitchFormatToUpper(t *testing.T) {
-	ids := []Implementation{NewV4(), NewV4()}
+	ids := []UUID{NewV4(), NewV4()}
 
 	// Reset default
 	SwitchFormat(FormatCanonical)
@@ -111,7 +111,7 @@ func didSwitchFormatToUpperPanic(pFormat string) bool {
 }
 
 func TestFormatter(t *testing.T) {
-	ids := []Implementation{NewV4(), NewV4()}
+	ids := []UUID{NewV4(), NewV4()}
 
 	for _, u := range ids {
 		for i := range formats {

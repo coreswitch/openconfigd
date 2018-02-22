@@ -21,11 +21,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/armon/go-radix"
+	"github.com/stretchr/testify/assert"
+
+	radix "github.com/armon/go-radix"
+
 	"github.com/osrg/gobgp/config"
 	"github.com/osrg/gobgp/packet/bgp"
 	"github.com/osrg/gobgp/table"
-	"github.com/stretchr/testify/assert"
 )
 
 func strToASParam(str string) *bgp.PathAttributeAsPath {
@@ -55,8 +57,8 @@ func strToASParam(str string) *bgp.PathAttributeAsPath {
 }
 
 func validateOne(tree *radix.Tree, cidr, aspathStr string) config.RpkiValidationResultType {
-	r, _ := ValidatePath(65500, tree, cidr, strToASParam(aspathStr))
-	return r
+	r := ValidatePath(65500, tree, cidr, strToASParam(aspathStr))
+	return r.Status
 }
 
 func TestValidate0(t *testing.T) {

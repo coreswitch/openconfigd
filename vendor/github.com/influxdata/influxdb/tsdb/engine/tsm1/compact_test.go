@@ -1010,6 +1010,89 @@ func TestTSMKeyIterator_MultipleKeysDeleted(t *testing.T) {
 	}
 }
 
+// Tests that deleted keys are not seen during iteration with
+// TSM files.
+func TestTSMKeyIterator_SingleDeletes(t *testing.T) {
+	dir := MustTempDir()
+	defer os.RemoveAll(dir)
+
+	v1 := tsm1.NewValue(10, int64(1))
+	v2 := tsm1.NewValue(20, int64(1))
+	v3 := tsm1.NewValue(30, int64(1))
+	v4 := tsm1.NewValue(40, int64(1))
+	v5 := tsm1.NewValue(50, int64(1))
+	v6 := tsm1.NewValue(60, int64(1))
+
+	points1 := map[string][]tsm1.Value{
+		"cpu,host=0#!~#value": []tsm1.Value{v1, v2},
+		"cpu,host=A#!~#value": []tsm1.Value{v5, v6},
+		"cpu,host=B#!~#value": []tsm1.Value{v3, v4},
+		"cpu,host=C#!~#value": []tsm1.Value{v1, v2},
+		"cpu,host=D#!~#value": []tsm1.Value{v1, v2},
+	}
+
+	r1 := MustTSMReader(dir, 1, points1)
+
+	if e := r1.DeleteRange([][]byte{[]byte("cpu,host=A#!~#value")}, 50, 50); nil != e {
+		t.Fatal(e)
+	}
+	if e := r1.DeleteRange([][]byte{[]byte("cpu,host=A#!~#value")}, 60, 60); nil != e {
+		t.Fatal(e)
+	}
+	if e := r1.DeleteRange([][]byte{[]byte("cpu,host=C#!~#value")}, 10, 10); nil != e {
+		t.Fatal(e)
+	}
+	if e := r1.DeleteRange([][]byte{[]byte("cpu,host=C#!~#value")}, 60, 60); nil != e {
+		t.Fatal(e)
+	}
+	if e := r1.DeleteRange([][]byte{[]byte("cpu,host=C#!~#value")}, 20, 20); nil != e {
+		t.Fatal(e)
+	}
+
+	iter, err := tsm1.NewTSMKeyIterator(1, false, nil, r1)
+	if err != nil {
+		t.Fatalf("unexpected error creating WALKeyIterator: %v", err)
+	}
+
+	var readValues int
+	var data = []struct {
+		key   string
+		value tsm1.Value
+	}{
+		{"cpu,host=0#!~#value", v1},
+		{"cpu,host=B#!~#value", v3},
+		{"cpu,host=D#!~#value", v1},
+	}
+
+	for iter.Next() {
+		key, _, _, block, err := iter.Read()
+		if err != nil {
+			t.Fatalf("unexpected error read: %v", err)
+		}
+
+		values, err := tsm1.DecodeBlock(block, nil)
+		if err != nil {
+			t.Fatalf("unexpected error decode: %v", err)
+		}
+
+		if exp, got := string(key), data[0].key; exp != got {
+			t.Fatalf("key mismatch: got %v, exp %v", exp, got)
+		}
+
+		if exp, got := len(values), 2; exp != got {
+			t.Fatalf("values length mismatch: exp %v, got %v", exp, got)
+		}
+		readValues++
+
+		assertValueEqual(t, values[0], data[0].value)
+		data = data[1:]
+	}
+
+	if exp, got := 3, readValues; exp != got {
+		t.Fatalf("failed to read expected values: exp %v, got %v", exp, got)
+	}
+}
+
 // Tests that the TSMKeyIterator will abort if the interrupt channel is closed
 func TestTSMKeyIterator_Abort(t *testing.T) {
 	dir := MustTempDir()
@@ -1366,6 +1449,30 @@ func TestDefaultPlanner_PlanLevel_SmallestCompactionStep(t *testing.T) {
 			Path: "06-01.tsm1",
 			Size: 1 * 1024 * 1024,
 		},
+		tsm1.FileStat{
+			Path: "07-01.tsm1",
+			Size: 1 * 1024 * 1024,
+		},
+		tsm1.FileStat{
+			Path: "08-01.tsm1",
+			Size: 1 * 1024 * 1024,
+		},
+		tsm1.FileStat{
+			Path: "09-01.tsm1",
+			Size: 1 * 1024 * 1024,
+		},
+		tsm1.FileStat{
+			Path: "10-01.tsm1",
+			Size: 1 * 1024 * 1024,
+		},
+		tsm1.FileStat{
+			Path: "11-01.tsm1",
+			Size: 1 * 1024 * 1024,
+		},
+		tsm1.FileStat{
+			Path: "12-01.tsm1",
+			Size: 1 * 1024 * 1024,
+		},
 	}
 
 	cp := tsm1.NewDefaultPlanner(
@@ -1376,7 +1483,7 @@ func TestDefaultPlanner_PlanLevel_SmallestCompactionStep(t *testing.T) {
 		}, tsdb.DefaultCompactFullWriteColdDuration,
 	)
 
-	expFiles := []tsm1.FileStat{data[4], data[5]}
+	expFiles := []tsm1.FileStat{data[4], data[5], data[6], data[7], data[8], data[9], data[10], data[11]}
 	tsm := cp.PlanLevel(1)
 	if exp, got := len(expFiles), len(tsm[0]); got != exp {
 		t.Fatalf("tsm file length mismatch: got %v, exp %v", got, exp)
@@ -1431,55 +1538,6 @@ func TestDefaultPlanner_PlanLevel_SplitFile(t *testing.T) {
 
 	expFiles := []tsm1.FileStat{data[0], data[1], data[2], data[3], data[4]}
 	tsm := cp.PlanLevel(3)
-	if exp, got := len(expFiles), len(tsm[0]); got != exp {
-		t.Fatalf("tsm file length mismatch: got %v, exp %v", got, exp)
-	}
-
-	for i, p := range expFiles {
-		if got, exp := tsm[0][i], p.Path; got != exp {
-			t.Fatalf("tsm file mismatch: got %v, exp %v", got, exp)
-		}
-	}
-}
-
-func TestDefaultPlanner_PlanLevel_IsolatedLowLevel(t *testing.T) {
-	data := []tsm1.FileStat{
-		tsm1.FileStat{
-			Path: "01-03.tsm1",
-			Size: 251 * 1024 * 1024,
-		},
-		tsm1.FileStat{
-			Path: "02-03.tsm1",
-			Size: 1 * 1024 * 1024,
-		},
-		tsm1.FileStat{
-			Path: "03-01.tsm1",
-			Size: 2 * 1024 * 1024 * 1024,
-		},
-		tsm1.FileStat{
-			Path: "04-01.tsm1",
-			Size: 10 * 1024 * 1024,
-		},
-		tsm1.FileStat{
-			Path: "05-02.tsm1",
-			Size: 1 * 1024 * 1024,
-		},
-		tsm1.FileStat{
-			Path: "06-01.tsm1",
-			Size: 1 * 1024 * 1024,
-		},
-	}
-
-	cp := tsm1.NewDefaultPlanner(
-		&fakeFileStore{
-			PathsFn: func() []tsm1.FileStat {
-				return data
-			},
-		}, tsdb.DefaultCompactFullWriteColdDuration,
-	)
-
-	expFiles := []tsm1.FileStat{data[2], data[3]}
-	tsm := cp.PlanLevel(1)
 	if exp, got := len(expFiles), len(tsm[0]); got != exp {
 		t.Fatalf("tsm file length mismatch: got %v, exp %v", got, exp)
 	}
@@ -1697,14 +1755,6 @@ func TestDefaultPlanner_PlanLevel_Multiple(t *testing.T) {
 			Path: "08-01.tsm1",
 			Size: 1 * 1024 * 1024,
 		},
-		tsm1.FileStat{
-			Path: "09-01.tsm1",
-			Size: 1 * 1024 * 1024,
-		},
-		tsm1.FileStat{
-			Path: "10-01.tsm1",
-			Size: 1 * 1024 * 1024,
-		},
 	}
 
 	cp := tsm1.NewDefaultPlanner(
@@ -1716,7 +1766,6 @@ func TestDefaultPlanner_PlanLevel_Multiple(t *testing.T) {
 	)
 
 	expFiles1 := []tsm1.FileStat{data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]}
-	expFiles2 := []tsm1.FileStat{data[8], data[9]}
 
 	tsm := cp.PlanLevel(1)
 	if exp, got := len(expFiles1), len(tsm[0]); got != exp {
@@ -1725,16 +1774,6 @@ func TestDefaultPlanner_PlanLevel_Multiple(t *testing.T) {
 
 	for i, p := range expFiles1 {
 		if got, exp := tsm[0][i], p.Path; got != exp {
-			t.Fatalf("tsm file mismatch: got %v, exp %v", got, exp)
-		}
-	}
-
-	if exp, got := len(expFiles2), len(tsm[1]); got != exp {
-		t.Fatalf("tsm file length mismatch: got %v, exp %v", got, exp)
-	}
-
-	for i, p := range expFiles2 {
-		if got, exp := tsm[1][i], p.Path; got != exp {
 			t.Fatalf("tsm file mismatch: got %v, exp %v", got, exp)
 		}
 	}
@@ -1782,6 +1821,30 @@ func TestDefaultPlanner_PlanLevel_InUse(t *testing.T) {
 			Path: "10-01.tsm1",
 			Size: 1 * 1024 * 1024,
 		},
+		tsm1.FileStat{
+			Path: "11-01.tsm1",
+			Size: 1 * 1024 * 1024,
+		},
+		tsm1.FileStat{
+			Path: "12-01.tsm1",
+			Size: 1 * 1024 * 1024,
+		},
+		tsm1.FileStat{
+			Path: "13-01.tsm1",
+			Size: 1 * 1024 * 1024,
+		},
+		tsm1.FileStat{
+			Path: "14-01.tsm1",
+			Size: 1 * 1024 * 1024,
+		},
+		tsm1.FileStat{
+			Path: "15-01.tsm1",
+			Size: 1 * 1024 * 1024,
+		},
+		tsm1.FileStat{
+			Path: "16-01.tsm1",
+			Size: 1 * 1024 * 1024,
+		},
 	}
 
 	cp := tsm1.NewDefaultPlanner(
@@ -1792,8 +1855,8 @@ func TestDefaultPlanner_PlanLevel_InUse(t *testing.T) {
 		}, tsdb.DefaultCompactFullWriteColdDuration,
 	)
 
-	expFiles1 := []tsm1.FileStat{data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]}
-	expFiles2 := []tsm1.FileStat{data[8], data[9]}
+	expFiles1 := data[0:8]
+	expFiles2 := data[8:16]
 
 	tsm := cp.PlanLevel(1)
 	if exp, got := len(expFiles1), len(tsm[0]); got != exp {

@@ -92,6 +92,7 @@ type PeerInfo struct {
 	RouteReflectorClient    bool
 	RouteReflectorClusterID net.IP
 	MultihopTtl             uint8
+	Confederation           bool
 }
 
 func (lhs *PeerInfo) Equal(rhs *PeerInfo) bool {
@@ -136,6 +137,7 @@ func NewPeerInfo(g *config.Global, p *config.Neighbor) *PeerInfo {
 		Address:                 naddr.IP,
 		RouteReflectorClusterID: id,
 		MultihopTtl:             p.EbgpMultihop.Config.MultihopTtl,
+		Confederation:           p.IsConfederationMember(g),
 	}
 }
 
@@ -147,15 +149,21 @@ type Destination struct {
 	newPathList      paths
 	oldKnownPathList paths
 	RadixKey         string
+	localIdMap       *Bitmap
 }
 
-func NewDestination(nlri bgp.AddrPrefixInterface, known ...*Path) *Destination {
+func NewDestination(nlri bgp.AddrPrefixInterface, mapSize int, known ...*Path) *Destination {
 	d := &Destination{
 		routeFamily:   bgp.AfiSafiToRouteFamily(nlri.AFI(), nlri.SAFI()),
 		nlri:          nlri,
 		knownPathList: known,
 		withdrawList:  make([]*Path, 0),
 		newPathList:   make([]*Path, 0),
+		localIdMap:    NewBitmap(mapSize),
+	}
+	// the id zero means id is not allocated yet.
+	if mapSize != 0 {
+		d.localIdMap.Flag(0)
 	}
 	switch d.routeFamily {
 	case bgp.RF_IPv4_UC, bgp.RF_IPv6_UC, bgp.RF_IPv4_MPLS, bgp.RF_IPv6_MPLS:
@@ -225,6 +233,17 @@ func getMultiBestPath(id string, pathList *paths) []*Path {
 
 func (dd *Destination) GetMultiBestPath(id string) []*Path {
 	return getMultiBestPath(id, &dd.knownPathList)
+}
+
+func (dd *Destination) GetAddPathChanges(id string) []*Path {
+	l := make([]*Path, 0, len(dd.newPathList)+len(dd.withdrawList))
+	for _, p := range dd.newPathList {
+		l = append(l, p)
+	}
+	for _, p := range dd.withdrawList {
+		l = append(l, p.Clone(true))
+	}
+	return l
 }
 
 func (dd *Destination) GetChanges(id string, peerDown bool) (*Path, *Path, []*Path) {
@@ -317,12 +336,30 @@ func (dd *Destination) validatePath(path *Path) {
 // paths from known paths. Also, adds new paths to known paths.
 func (dest *Destination) Calculate() *Destination {
 	oldKnownPathList := dest.knownPathList
+	newPathList := dest.newPathList
 	// First remove the withdrawn paths.
-	dest.explicitWithdraw()
+	withdrawn := dest.explicitWithdraw()
 	// Do implicit withdrawal
 	dest.implicitWithdraw()
+
+	for _, path := range withdrawn {
+		if id := path.GetNlri().PathLocalIdentifier(); id != 0 {
+			dest.localIdMap.Unflag(uint(id))
+		}
+	}
 	// Collect all new paths into known paths.
 	dest.knownPathList = append(dest.knownPathList, dest.newPathList...)
+
+	for _, path := range dest.knownPathList {
+		if path.GetNlri().PathLocalIdentifier() == 0 {
+			id, err := dest.localIdMap.FindandSetZeroBit()
+			if err != nil {
+				dest.localIdMap.Expand()
+				id, _ = dest.localIdMap.FindandSetZeroBit()
+			}
+			path.GetNlri().SetPathLocalIdentifier(uint32(id))
+		}
+	}
 	// Clear new paths as we copied them.
 	dest.newPathList = make([]*Path, 0)
 	// Compute new best path
@@ -333,6 +370,8 @@ func (dest *Destination) Calculate() *Destination {
 		nlri:             dest.nlri,
 		knownPathList:    dest.knownPathList,
 		oldKnownPathList: oldKnownPathList,
+		newPathList:      newPathList,
+		withdrawList:     withdrawn,
 	}
 }
 
@@ -386,6 +425,8 @@ func (dest *Destination) explicitWithdraw() paths {
 				// we could flag IsWithdraw down after use to avoid
 				// a path with IsWithdraw flag exists in adj-rib-in
 				path.IsWithdraw = true
+				withdraw.GetNlri().SetPathLocalIdentifier(path.GetNlri().PathLocalIdentifier())
+				withdraw.pathAttrs = path.pathAttrs
 				matches = append(matches, withdraw)
 			}
 		}
@@ -438,6 +479,7 @@ func (dest *Destination) implicitWithdraw() paths {
 				}).Debug("Implicit withdrawal of old path, since we have learned new path from the same peer")
 
 				found = true
+				newPath.GetNlri().SetPathLocalIdentifier(path.GetNlri().PathLocalIdentifier())
 				break
 			}
 		}
@@ -461,7 +503,7 @@ func (dest *Destination) computeKnownBestPath() (*Path, BestPathReason, error) {
 
 	log.WithFields(log.Fields{
 		"Topic": "Table",
-	}).Debugf("computeKnownBestPath known pathlist: %d", len(dest.knownPathList))
+	}).Debugf("computeKnownBestPath knownPathList: %d", len(dest.knownPathList))
 
 	// We pick the first path as current best path. This helps in breaking
 	// tie between two new paths learned in one cycle for which best-path
@@ -701,13 +743,21 @@ func compareByASPath(path1, path2 *Path) *Path {
 	//
 	// Shortest as-path length is preferred. If both path have same lengths,
 	// we return None.
+	if SelectionOptions.IgnoreAsPathLength {
+		log.WithFields(log.Fields{
+			"Topic": "Table",
+		}).Debug("compareByASPath -- skip")
+		return nil
+	}
 	log.WithFields(log.Fields{
 		"Topic": "Table",
 	}).Debug("enter compareByASPath")
 	attribute1 := path1.getPathAttr(bgp.BGP_ATTR_TYPE_AS_PATH)
 	attribute2 := path2.getPathAttr(bgp.BGP_ATTR_TYPE_AS_PATH)
 
-	if attribute1 == nil || attribute2 == nil {
+	// With addpath support, we could compare paths from API don't
+	// AS_PATH. No need to warn here.
+	if !path1.IsLocal() && !path2.IsLocal() && (attribute1 == nil || attribute2 == nil) {
 		log.WithFields(log.Fields{
 			"Topic":   "Table",
 			"Key":     "compareByASPath",
@@ -845,9 +895,12 @@ func compareByASNumber(path1, path2 *Path) *Path {
 	log.WithFields(log.Fields{
 		"Topic": "Table",
 	}).Debugf("compareByASNumber -- p1Asn: %d, p2Asn: %d", path1.GetSource().AS, path2.GetSource().AS)
-	// If one path is from ibgp peer and another is from ebgp peer, take the ebgp path
-	if path1.IsIBGP() != path2.IsIBGP() {
-		if path1.IsIBGP() {
+	// Path from confederation member should be treated as internal (IBGP learned) path.
+	isIBGP1 := path1.GetSource().Confederation || path1.IsIBGP()
+	isIBGP2 := path2.GetSource().Confederation || path2.IsIBGP()
+	// If one path is from ibgp peer and another is from ebgp peer, take the ebgp path.
+	if isIBGP1 != isIBGP2 {
+		if isIBGP1 {
 			return path2
 		}
 		return path1
@@ -991,7 +1044,7 @@ func (old *Destination) Select(option ...DestinationSelectOption) *Destination {
 			}
 		}
 	}
-	new := NewDestination(old.nlri)
+	new := NewDestination(old.nlri, 0)
 	for _, path := range paths {
 		p := path.Clone(path.IsWithdraw)
 		p.Filter("", path.Filtered(id))

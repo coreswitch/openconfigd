@@ -46,7 +46,7 @@ func (t *Table) ToNativeTable(option ...ToNativeOption) (*table.Table, error) {
 }
 
 func getNLRI(family bgp.RouteFamily, buf []byte) (bgp.AddrPrefixInterface, error) {
-	afi, safi := bgp.RouteFamilyToAfiSafi(bgp.RouteFamily(family))
+	afi, safi := bgp.RouteFamilyToAfiSafi(family)
 	nlri, err := bgp.NewPrefixFromRouteFamily(afi, safi)
 	if err != nil {
 		return nil, err
@@ -82,7 +82,11 @@ func (d *Destination) ToNativeDestination(option ...ToNativeOption) (*table.Dest
 		}
 		paths = append(paths, path)
 	}
-	return table.NewDestination(nlri, paths...), nil
+	return table.NewDestination(nlri, 0, paths...), nil
+}
+
+func (p *Path) GetNativeNlri() (bgp.AddrPrefixInterface, error) {
+	return getNLRI(bgp.RouteFamily(p.Family), p.Nlri)
 }
 
 func (p *Path) ToNativePath(option ...ToNativeOption) (*table.Path, error) {
@@ -120,8 +124,15 @@ func (p *Path) ToNativePath(option ...ToNativeOption) (*table.Path, error) {
 	}
 	t := time.Unix(p.Age, 0)
 	nlri.SetPathIdentifier(p.Identifier)
+	nlri.SetPathLocalIdentifier(p.LocalIdentifier)
 	path := table.NewPath(info, nlri, p.IsWithdraw, pattr, t, false)
-	path.SetValidation(config.IntToRpkiValidationResultTypeMap[int(p.Validation)])
+	path.SetValidation(&table.Validation{
+		Status:          config.IntToRpkiValidationResultTypeMap[int(p.Validation)],
+		Reason:          table.IntToRpkiValidationReasonTypeMap[int(p.ValidationDetail.Reason)],
+		Matched:         NewROAListFromApiStructList(p.ValidationDetail.Matched),
+		UnmatchedAs:     NewROAListFromApiStructList(p.ValidationDetail.UnmatchedAs),
+		UnmatchedLength: NewROAListFromApiStructList(p.ValidationDetail.UnmatchedLength),
+	})
 	path.MarkStale(p.Stale)
 	path.SetUUID(p.Uuid)
 	if p.Filtered {
@@ -129,4 +140,42 @@ func (p *Path) ToNativePath(option ...ToNativeOption) (*table.Path, error) {
 	}
 	path.IsNexthopInvalid = p.IsNexthopInvalid
 	return path, nil
+}
+
+func NewROAListFromApiStructList(l []*Roa) []*table.ROA {
+	roas := make([]*table.ROA, 0, len(l))
+	for _, r := range l {
+		ip := net.ParseIP(r.Prefix)
+		rf := func(prefix string) bgp.RouteFamily {
+			a, _, _ := net.ParseCIDR(prefix)
+			if a.To4() != nil {
+				return bgp.RF_IPv4_UC
+			} else {
+				return bgp.RF_IPv6_UC
+			}
+		}(r.Prefix)
+		afi, _ := bgp.RouteFamilyToAfiSafi(rf)
+		roa := table.NewROA(int(afi), []byte(ip), uint8(r.Prefixlen), uint8(r.Maxlen), r.As, net.JoinHostPort(r.Conf.Address, r.Conf.RemotePort))
+		roas = append(roas, roa)
+	}
+	return roas
+}
+
+func extractFamilyFromConfigAfiSafi(c *config.AfiSafi) uint32 {
+	if c == nil {
+		return 0
+	}
+	// If address family value is already stored in AfiSafiState structure,
+	// we prefer to use this value.
+	if c.State.Family != 0 {
+		return uint32(c.State.Family)
+	}
+	// In case that Neighbor structure came from CLI or gRPC, address family
+	// value in AfiSafiState structure can be omitted.
+	// Here extracts value from AfiSafiName field in AfiSafiConfig structure.
+	if rf, err := bgp.GetRouteFamily(string(c.Config.AfiSafiName)); err == nil {
+		return uint32(rf)
+	}
+	// Ignores invalid address family name
+	return 0
 }

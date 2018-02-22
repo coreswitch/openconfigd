@@ -1,21 +1,16 @@
 package uuid_test
 
 import (
-	. "github.com/myesui/uuid"
-	"gopkg.in/stretchr/testify.v1/assert"
+	"github.com/stretchr/testify/assert"
+	. "github.com/twinj/uuid"
 	"testing"
-	"log"
-	"io/ioutil"
 )
 
 func TestInit(t *testing.T) {
-	assert.Panics(t, didRegisterPanic, "Should panic")
+	assert.Panics(t, didInitPanic, "Should panic")
 }
 
-func didRegisterPanic() {
-	config := &GeneratorConfig{
-		Logger: log.New(ioutil.Discard, "", 0),
-	}
-	RegisterGenerator(config)
-	RegisterGenerator(config)
+func didInitPanic() {
+	Init()
+	Init()
 }

@@ -1,13 +1,13 @@
 package uuid
 
 import (
-	"gopkg.in/stretchr/testify.v1/assert"
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func TestVersion_String(t *testing.T) {
 	for _, v := range []Version{
-		VersionOne, VersionTwo, VersionThree, VersionFour, VersionFive, VersionUnknown,
+		One, Two, Three, Four, Five, Unknown,
 	} {
 		assert.NotEmpty(t, v.String(), "Expected a value")
 	}
@@ -15,7 +15,7 @@ func TestVersion_String(t *testing.T) {
 
 // Used to determine that a byte result from getting the variant is with the
 // correct constraints and bounded values.
-func tVariantConstraint(v byte, b byte, t *testing.T) {
+func tVariantConstraint(v byte, b byte, o UUID, t *testing.T) {
 	switch v {
 	case VariantNCS:
 		switch b {

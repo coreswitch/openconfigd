@@ -330,28 +330,32 @@ func (fsm *FSM) connectLoop() error {
 		if fsm.pConf.Transport.Config.RemotePort != 0 {
 			port = int(fsm.pConf.Transport.Config.RemotePort)
 		}
-		host := net.JoinHostPort(addr, strconv.Itoa(port))
-		// check if LocalAddress has been configured
-		laddr := fsm.pConf.Transport.Config.LocalAddress
-		var conn net.Conn
-		var err error
-		if fsm.pConf.Config.AuthPassword != "" {
-			deadline := (MIN_CONNECT_RETRY - 1) * 1000 // msec
-			conn, err = DialTCPTimeoutWithMD5Sig(addr, port, laddr, fsm.pConf.Config.AuthPassword, deadline)
-		} else {
-			lhost := net.JoinHostPort(laddr, "0")
-			ltcpaddr, e := net.ResolveTCPAddr("tcp", lhost)
-			if e != nil {
-				log.WithFields(log.Fields{
-					"Topic": "Peer",
-					"Key":   fsm.pConf.State.NeighborAddress,
-				}).Warnf("failed to resolve ltcpaddr: %s", e)
-				return
-			}
-			d := net.Dialer{LocalAddr: ltcpaddr, Timeout: time.Duration(MIN_CONNECT_RETRY-1) * time.Second}
-			conn, err = d.Dial("tcp", host)
+		laddr, err := net.ResolveTCPAddr("tcp", net.JoinHostPort(fsm.pConf.Transport.Config.LocalAddress, "0"))
+		if err != nil {
+			log.WithFields(log.Fields{
+				"Topic": "Peer",
+				"Key":   fsm.pConf.State.NeighborAddress,
+			}).Warn("failed to resolve local address: %s", err)
+			return
 		}
-
+		var conn net.Conn
+		d := TCPDialer{
+			Dialer: net.Dialer{
+				LocalAddr: laddr,
+				Timeout:   time.Duration(MIN_CONNECT_RETRY-1) * time.Second,
+			},
+			AuthPassword: fsm.pConf.Config.AuthPassword,
+		}
+		if fsm.pConf.TtlSecurity.Config.Enabled {
+			d.Ttl = 255
+			d.TtlMin = fsm.pConf.TtlSecurity.Config.TtlMin
+		} else if fsm.pConf.Config.PeerAs != 0 && fsm.pConf.Config.PeerType == config.PEER_TYPE_EXTERNAL {
+			d.Ttl = 1
+			if fsm.pConf.EbgpMultihop.Config.Enabled {
+				d.Ttl = fsm.pConf.EbgpMultihop.Config.MultihopTtl
+			}
+		}
+		conn, err = d.DialTCP(addr, port)
 		if err == nil {
 			select {
 			case fsm.connCh <- conn:
@@ -506,7 +510,7 @@ func (h *FSMHandler) active() (bgp.FSMState, FsmStateReason) {
 				ttl = int(fsm.pConf.Transport.Config.Ttl)
 			}
 			if ttl != 0 {
-				if err := SetTcpTTLSockopts(conn.(*net.TCPConn), ttl); err != nil {
+				if err := SetTcpTTLSockopt(conn.(*net.TCPConn), ttl); err != nil {
 					log.WithFields(log.Fields{
 						"Topic": "Peer",
 						"Key":   fsm.pConf.Config.NeighborAddress,
@@ -515,7 +519,7 @@ func (h *FSMHandler) active() (bgp.FSMState, FsmStateReason) {
 				}
 			}
 			if ttlMin != 0 {
-				if err := SetTcpMinTTLSockopts(conn.(*net.TCPConn), ttlMin); err != nil {
+				if err := SetTcpMinTTLSockopt(conn.(*net.TCPConn), ttlMin); err != nil {
 					log.WithFields(log.Fields{
 						"Topic": "Peer",
 						"Key":   fsm.pConf.Config.NeighborAddress,
@@ -556,12 +560,31 @@ func (h *FSMHandler) active() (bgp.FSMState, FsmStateReason) {
 	}
 }
 
+func capAddPathFromConfig(pConf *config.Neighbor) bgp.ParameterCapabilityInterface {
+	tuples := make([]*bgp.CapAddPathTuple, 0, len(pConf.AfiSafis))
+	for _, af := range pConf.AfiSafis {
+		var mode bgp.BGPAddPathMode
+		if af.AddPaths.State.Receive {
+			mode |= bgp.BGP_ADD_PATH_RECEIVE
+		}
+		if af.AddPaths.State.SendMax > 0 {
+			mode |= bgp.BGP_ADD_PATH_SEND
+		}
+		if mode > 0 {
+			tuples = append(tuples, bgp.NewCapAddPathTuple(af.State.Family, mode))
+		}
+	}
+	if len(tuples) == 0 {
+		return nil
+	}
+	return bgp.NewCapAddPath(tuples)
+}
+
 func capabilitiesFromConfig(pConf *config.Neighbor) []bgp.ParameterCapabilityInterface {
 	caps := make([]bgp.ParameterCapabilityInterface, 0, 4)
 	caps = append(caps, bgp.NewCapRouteRefresh())
-	for _, rf := range pConf.AfiSafis {
-		family, _ := bgp.GetRouteFamily(string(rf.Config.AfiSafiName))
-		caps = append(caps, bgp.NewCapMultiProtocol(family))
+	for _, af := range pConf.AfiSafis {
+		caps = append(caps, bgp.NewCapMultiProtocol(af.State.Family))
 	}
 	caps = append(caps, bgp.NewCapFourOctetASNumber(pConf.Config.LocalAs))
 
@@ -577,7 +600,6 @@ func capabilitiesFromConfig(pConf *config.Neighbor) []bgp.ParameterCapabilityInt
 
 		if !c.HelperOnly {
 			for i, rf := range pConf.AfiSafis {
-				k, _ := bgp.GetRouteFamily(string(rf.Config.AfiSafiName))
 				if m := rf.MpGracefulRestart.Config; m.Enabled {
 					// When restarting, always flag forwaring bit.
 					// This can be a lie, depending on how gobgpd is used.
@@ -586,17 +608,17 @@ func capabilitiesFromConfig(pConf *config.Neighbor) []bgp.ParameterCapabilityInt
 					// is a l2 switch which continues to work with no
 					// relation to bgpd, this behavior is ok.
 					// TODO consideration of other use-cases
-					tuples = append(tuples, bgp.NewCapGracefulRestartTuple(k, restarting))
+					tuples = append(tuples, bgp.NewCapGracefulRestartTuple(rf.State.Family, restarting))
 					pConf.AfiSafis[i].MpGracefulRestart.State.Advertised = true
 				}
 				if m := rf.LongLivedGracefulRestart.Config; m.Enabled {
-					ltuples = append(ltuples, bgp.NewCapLongLivedGracefulRestartTuple(k, restarting, m.RestartTime))
+					ltuples = append(ltuples, bgp.NewCapLongLivedGracefulRestartTuple(rf.State.Family, restarting, m.RestartTime))
 				}
 			}
 		}
-		time := c.RestartTime
+		restartTime := c.RestartTime
 		notification := c.NotificationEnabled
-		caps = append(caps, bgp.NewCapGracefulRestart(restarting, notification, time, tuples))
+		caps = append(caps, bgp.NewCapGracefulRestart(restarting, notification, restartTime, tuples))
 		if c.LongLivedEnabled {
 			caps = append(caps, bgp.NewCapLongLivedGracefulRestart(ltuples))
 		}
@@ -613,24 +635,12 @@ func capabilitiesFromConfig(pConf *config.Neighbor) []bgp.ParameterCapabilityInt
 			tuple := bgp.NewCapExtendedNexthopTuple(family, bgp.AFI_IP6)
 			tuples = append(tuples, tuple)
 		}
-		cap := bgp.NewCapExtendedNexthop(tuples)
-		caps = append(caps, cap)
+		caps = append(caps, bgp.NewCapExtendedNexthop(tuples))
 	}
 
-	var mode bgp.BGPAddPathMode
-	if pConf.AddPaths.Config.Receive {
-		mode |= bgp.BGP_ADD_PATH_RECEIVE
-	}
-	if pConf.AddPaths.Config.SendMax > 0 {
-		mode |= bgp.BGP_ADD_PATH_SEND
-	}
-	if uint8(mode) > 0 {
-		items := make([]*bgp.CapAddPathTuple, 0, len(pConf.AfiSafis))
-		for _, rf := range pConf.AfiSafis {
-			k, _ := bgp.GetRouteFamily(string(rf.Config.AfiSafiName))
-			items = append(items, bgp.NewCapAddPathTuple(k, mode))
-		}
-		caps = append(caps, bgp.NewCapAddPath(items))
+	// ADD-PATH Capability
+	if c := capAddPathFromConfig(pConf); c != nil {
+		caps = append(caps, capAddPathFromConfig(pConf))
 	}
 
 	return caps
@@ -681,6 +691,92 @@ func hasOwnASLoop(ownAS uint32, limit int, aspath *bgp.PathAttributeAsPath) bool
 	return false
 }
 
+func extractRouteFamily(p *bgp.PathAttributeInterface) *bgp.RouteFamily {
+	attr := *p
+
+	var afi uint16
+	var safi uint8
+
+	switch a := attr.(type) {
+	case *bgp.PathAttributeMpReachNLRI:
+		afi = a.AFI
+		safi = a.SAFI
+	case *bgp.PathAttributeMpUnreachNLRI:
+		afi = a.AFI
+		safi = a.SAFI
+	default:
+		return nil
+	}
+
+	rf := bgp.AfiSafiToRouteFamily(afi, safi)
+	return &rf
+}
+
+func (h *FSMHandler) afiSafiDisable(rf bgp.RouteFamily) string {
+	n := bgp.AddressFamilyNameMap[rf]
+
+	for i, a := range h.fsm.pConf.AfiSafis {
+		if string(a.Config.AfiSafiName) == n {
+			h.fsm.pConf.AfiSafis[i].State.Enabled = false
+			break
+		}
+	}
+	newList := make([]bgp.ParameterCapabilityInterface, 0)
+	for _, c := range h.fsm.capMap[bgp.BGP_CAP_MULTIPROTOCOL] {
+		if c.(*bgp.CapMultiProtocol).CapValue == rf {
+			continue
+		}
+		newList = append(newList, c)
+	}
+	h.fsm.capMap[bgp.BGP_CAP_MULTIPROTOCOL] = newList
+	return n
+}
+
+func (h *FSMHandler) handlingError(m *bgp.BGPMessage, e error, useRevisedError bool) bgp.ErrorHandling {
+	handling := bgp.ERROR_HANDLING_NONE
+	if m.Header.Type == bgp.BGP_MSG_UPDATE && useRevisedError {
+		factor := e.(*bgp.MessageError)
+		handling = factor.ErrorHandling
+		switch handling {
+		case bgp.ERROR_HANDLING_ATTRIBUTE_DISCARD:
+			log.WithFields(log.Fields{
+				"Topic": "Peer",
+				"Key":   h.fsm.pConf.State.NeighborAddress,
+				"State": h.fsm.state.String(),
+				"error": e,
+			}).Warn("Some attributes were discarded")
+		case bgp.ERROR_HANDLING_TREAT_AS_WITHDRAW:
+			m.Body = bgp.TreatAsWithdraw(m.Body.(*bgp.BGPUpdate))
+			log.WithFields(log.Fields{
+				"Topic": "Peer",
+				"Key":   h.fsm.pConf.State.NeighborAddress,
+				"State": h.fsm.state.String(),
+				"error": e,
+			}).Warn("the received Update message was treated as withdraw")
+		case bgp.ERROR_HANDLING_AFISAFI_DISABLE:
+			rf := extractRouteFamily(factor.ErrorAttribute)
+			if rf == nil {
+				log.WithFields(log.Fields{
+					"Topic": "Peer",
+					"Key":   h.fsm.pConf.State.NeighborAddress,
+					"State": h.fsm.state.String(),
+				}).Warn("Error occurred during AFI/SAFI disabling")
+			} else {
+				n := h.afiSafiDisable(*rf)
+				log.WithFields(log.Fields{
+					"Topic": "Peer",
+					"Key":   h.fsm.pConf.State.NeighborAddress,
+					"State": h.fsm.state.String(),
+					"error": e,
+				}).Warnf("Capability %s was disabled", n)
+			}
+		}
+	} else {
+		handling = bgp.ERROR_HANDLING_SESSION_RESET
+	}
+	return handling
+}
+
 func (h *FSMHandler) recvMessageWithError() (*FsmMsg, error) {
 	sendToErrorCh := func(reason FsmStateReason) {
 		// probably doesn't happen but be cautious
@@ -711,7 +807,7 @@ func (h *FSMHandler) recvMessageWithError() (*FsmMsg, error) {
 			"Key":   h.fsm.pConf.State.NeighborAddress,
 			"State": h.fsm.state.String(),
 			"error": err,
-		}).Warn("malformed BGP Header")
+		}).Warn("Session will be reset due to malformed BGP Header")
 		fmsg := &FsmMsg{
 			MsgType: FSM_MSG_BGP_MESSAGE,
 			MsgSrc:  h.fsm.pConf.State.NeighborAddress,
@@ -728,12 +824,16 @@ func (h *FSMHandler) recvMessageWithError() (*FsmMsg, error) {
 	}
 
 	now := time.Now()
+	useRevisedError := h.fsm.pConf.ErrorHandling.Config.TreatAsWithdraw
+	handling := bgp.ERROR_HANDLING_NONE
+
 	m, err := bgp.ParseBGPBody(hd, bodyBuf, h.fsm.marshallingOptions)
-	if err == nil {
+	if err != nil {
+		handling = h.handlingError(m, err, useRevisedError)
+		h.fsm.bgpMessageStateUpdate(0, true)
+	} else {
 		h.fsm.bgpMessageStateUpdate(m.Header.Type, true)
 		err = bgp.ValidateBGPMessage(m)
-	} else {
-		h.fsm.bgpMessageStateUpdate(0, true)
 	}
 	fmsg := &FsmMsg{
 		MsgType:   FSM_MSG_BGP_MESSAGE,
@@ -741,15 +841,21 @@ func (h *FSMHandler) recvMessageWithError() (*FsmMsg, error) {
 		timestamp: now,
 		Version:   h.fsm.version,
 	}
-	if err != nil {
+
+	switch handling {
+	case bgp.ERROR_HANDLING_AFISAFI_DISABLE:
+		fmsg.MsgData = m
+		return fmsg, nil
+	case bgp.ERROR_HANDLING_SESSION_RESET:
 		log.WithFields(log.Fields{
 			"Topic": "Peer",
 			"Key":   h.fsm.pConf.State.NeighborAddress,
 			"State": h.fsm.state.String(),
 			"error": err,
-		}).Warn("malformed BGP message")
+		}).Warn("Session will be reset due to malformed BGP message")
 		fmsg.MsgData = err
-	} else {
+		return fmsg, err
+	default:
 		fmsg.MsgData = m
 		if h.fsm.state == bgp.BGP_FSM_ESTABLISHED {
 			switch m.Header.Type {
@@ -757,20 +863,24 @@ func (h *FSMHandler) recvMessageWithError() (*FsmMsg, error) {
 				fmsg.MsgType = FSM_MSG_ROUTE_REFRESH
 			case bgp.BGP_MSG_UPDATE:
 				body := m.Body.(*bgp.BGPUpdate)
-				confedCheck := !config.IsConfederationMember(h.fsm.gConf, h.fsm.pConf) && config.IsEBGPPeer(h.fsm.gConf, h.fsm.pConf)
+				isEBGP := h.fsm.pConf.IsEBGPPeer(h.fsm.gConf)
+				isConfed := h.fsm.pConf.IsConfederationMember(h.fsm.gConf)
 
 				fmsg.payload = make([]byte, len(headerBuf)+len(bodyBuf))
 				copy(fmsg.payload, headerBuf)
 				copy(fmsg.payload[len(headerBuf):], bodyBuf)
 
-				_, err = bgp.ValidateUpdateMsg(body, h.fsm.rfMap, confedCheck)
-				if err != nil {
+				ok, err := bgp.ValidateUpdateMsg(body, h.fsm.rfMap, isEBGP, isConfed)
+				if !ok {
+					handling = h.handlingError(m, err, useRevisedError)
+				}
+				if handling == bgp.ERROR_HANDLING_SESSION_RESET {
 					log.WithFields(log.Fields{
 						"Topic": "Peer",
 						"Key":   h.fsm.pConf.State.NeighborAddress,
 						"State": h.fsm.state.String(),
 						"error": err,
-					}).Warn("malformed BGP update message")
+					}).Warn("Session will be reset due to malformed BGP update message")
 					fmsg.MsgData = err
 					return fmsg, err
 				}
@@ -854,7 +964,7 @@ func (h *FSMHandler) recvMessageWithError() (*FsmMsg, error) {
 			}
 		}
 	}
-	return fmsg, err
+	return fmsg, nil
 }
 
 func (h *FSMHandler) recvMessage() error {
@@ -896,7 +1006,7 @@ func open2Cap(open *bgp.BGPOpen, n *config.Neighbor) (map[bgp.BGPCapabilityCode]
 		capMap[bgp.BGP_CAP_MULTIPROTOCOL] = []bgp.ParameterCapabilityInterface{bgp.NewCapMultiProtocol(bgp.RF_IPv4_UC)}
 	}
 
-	local := config.CreateRfMap(n)
+	local := n.CreateRfMap()
 	remote := make(map[bgp.RouteFamily]bgp.BGPAddPathMode)
 	for _, c := range capMap[bgp.BGP_CAP_MULTIPROTOCOL] {
 		family := c.(*bgp.CapMultiProtocol).CapValue
@@ -996,7 +1106,7 @@ func (h *FSMHandler) opensent() (bgp.FSMState, FsmStateReason) {
 							"Topic": "Peer",
 							"Key":   fsm.pConf.State.NeighborAddress,
 							"State": fsm.state.String(),
-						}).Infof("skiped asn negotiation: peer-as: %d, peer-type: %s", peerAs, typ)
+						}).Infof("skipped asn negotiation: peer-as: %d, peer-type: %s", peerAs, typ)
 					} else {
 						fsm.pConf.State.PeerType = fsm.pConf.Config.PeerType
 					}
@@ -1342,7 +1452,7 @@ func (h *FSMHandler) sendMessageloop() error {
 			return nil
 		case o := <-h.outgoing.Out():
 			m := o.(*FsmOutgoingMsg)
-			for _, msg := range table.CreateUpdateMsgFromPaths(m.Paths) {
+			for _, msg := range table.CreateUpdateMsgFromPaths(m.Paths, h.fsm.marshallingOptions) {
 				if err := send(msg); err != nil {
 					return nil
 				}

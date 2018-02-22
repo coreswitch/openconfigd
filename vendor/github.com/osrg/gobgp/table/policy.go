@@ -26,10 +26,12 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/armon/go-radix"
+	log "github.com/sirupsen/logrus"
+
+	radix "github.com/armon/go-radix"
+
 	"github.com/osrg/gobgp/config"
 	"github.com/osrg/gobgp/packet/bgp"
-	log "github.com/sirupsen/logrus"
 )
 
 type PolicyOptions struct {
@@ -534,7 +536,7 @@ func NewPrefixSet(c config.PrefixSet) (*PrefixSet, error) {
 
 type NeighborSet struct {
 	name string
-	list []net.IP
+	list []net.IPNet
 }
 
 func (s *NeighborSet) Name() string {
@@ -559,11 +561,11 @@ func (lhs *NeighborSet) Remove(arg DefinedSet) error {
 	if !ok {
 		return fmt.Errorf("type cast failed")
 	}
-	ps := make([]net.IP, 0, len(lhs.list))
+	ps := make([]net.IPNet, 0, len(lhs.list))
 	for _, x := range lhs.list {
 		found := false
 		for _, y := range rhs.list {
-			if x.Equal(y) {
+			if x.String() == y.String() {
 				found = true
 				break
 			}
@@ -608,7 +610,7 @@ func (s *NeighborSet) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.ToConfig())
 }
 
-func NewNeighborSetFromApiStruct(name string, list []net.IP) (*NeighborSet, error) {
+func NewNeighborSetFromApiStruct(name string, list []net.IPNet) (*NeighborSet, error) {
 	return &NeighborSet{
 		name: name,
 		list: list,
@@ -623,13 +625,24 @@ func NewNeighborSet(c config.NeighborSet) (*NeighborSet, error) {
 		}
 		return nil, fmt.Errorf("empty neighbor set name")
 	}
-	list := make([]net.IP, 0, len(c.NeighborInfoList))
+	list := make([]net.IPNet, 0, len(c.NeighborInfoList))
 	for _, x := range c.NeighborInfoList {
-		addr := net.ParseIP(x)
-		if addr == nil {
-			return nil, fmt.Errorf("invalid address: %s", x)
+		_, cidr, err := net.ParseCIDR(x)
+		if err != nil {
+			addr := net.ParseIP(x)
+			if addr == nil {
+				return nil, fmt.Errorf("invalid address or prefix: %s", x)
+			}
+			mask := net.CIDRMask(32, 32)
+			if addr.To4() == nil {
+				mask = net.CIDRMask(128, 128)
+			}
+			cidr = &net.IPNet{
+				IP:   addr,
+				Mask: mask,
+			}
 		}
-		list = append(list, addr)
+		list = append(list, *cidr)
 	}
 	return &NeighborSet{
 		name: name,
@@ -1345,7 +1358,6 @@ func (c *NeighborCondition) Option() MatchOption {
 // and, subsequent comparisons are skipped if that matches the conditions.
 // If NeighborList's length is zero, return true.
 func (c *NeighborCondition) Evaluate(path *Path, options *PolicyOptions) bool {
-
 	if len(c.set.list) == 0 {
 		log.WithFields(log.Fields{
 			"Topic": "Policy",
@@ -1363,7 +1375,7 @@ func (c *NeighborCondition) Evaluate(path *Path, options *PolicyOptions) bool {
 	}
 	result := false
 	for _, n := range c.set.list {
-		if neighbor.Equal(n) {
+		if n.Contains(neighbor) {
 			result = true
 			break
 		}
@@ -1718,7 +1730,7 @@ func (c *RpkiValidationCondition) Type() ConditionType {
 }
 
 func (c *RpkiValidationCondition) Evaluate(path *Path, _ *PolicyOptions) bool {
-	return c.result == path.Validation()
+	return c.result == path.ValidationStatus()
 }
 
 func (c *RpkiValidationCondition) Set() DefinedSet {
@@ -2275,7 +2287,7 @@ func (a *AsPathPrependAction) Type() ActionType {
 	return ACTION_AS_PATH_PREPEND
 }
 
-func (a *AsPathPrependAction) Apply(path *Path, _ *PolicyOptions) *Path {
+func (a *AsPathPrependAction) Apply(path *Path, option *PolicyOptions) *Path {
 	var asn uint32
 	if a.useLeftMost {
 		aspath := path.GetAsSeqList()
@@ -2298,7 +2310,8 @@ func (a *AsPathPrependAction) Apply(path *Path, _ *PolicyOptions) *Path {
 		asn = a.asn
 	}
 
-	path.PrependAsn(asn, a.repeat)
+	confed := option != nil && option.Info.Confederation
+	path.PrependAsn(asn, a.repeat, confed)
 
 	return path
 }
@@ -3059,7 +3072,7 @@ func (r *RoutingPolicy) inUse(d DefinedSet) bool {
 	for _, p := range r.policyMap {
 		for _, s := range p.Statements {
 			for _, c := range s.Conditions {
-				if c.Set().Name() == name {
+				if c.Set() != nil && c.Set().Name() == name {
 					return true
 				}
 			}
@@ -3499,9 +3512,10 @@ func (r *RoutingPolicy) ReplacePolicy(x *Policy, refer, preserve bool) (err erro
 		}
 	}
 
+	ys := y.Statements
 	err = y.Replace(x)
 	if err == nil && !preserve {
-		for _, st := range y.Statements {
+		for _, st := range ys {
 			if !r.statementInUse(st) {
 				log.WithFields(log.Fields{
 					"Topic": "Policy",

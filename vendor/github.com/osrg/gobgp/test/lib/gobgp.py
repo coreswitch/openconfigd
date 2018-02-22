@@ -27,6 +27,7 @@ from fabric.utils import indent
 import netaddr
 import toml
 import yaml
+import collections
 
 from lib.base import (
     BGPContainer,
@@ -35,7 +36,9 @@ from lib.base import (
     BGP_ATTR_TYPE_NEXT_HOP,
     BGP_ATTR_TYPE_MULTI_EXIT_DISC,
     BGP_ATTR_TYPE_LOCAL_PREF,
+    BGP_ATTR_TYPE_COMMUNITIES,
     BGP_ATTR_TYPE_MP_REACH_NLRI,
+    community_str,
 )
 
 
@@ -53,10 +56,12 @@ class GoBGPContainer(BGPContainer):
 
     def __init__(self, name, asn, router_id, ctn_image_name='osrg/gobgp',
                  log_level='debug', zebra=False, config_format='toml',
-                 zapi_version=2, ospfd_config=None):
+                 zapi_version=2, bgp_config=None, ospfd_config=None):
         super(GoBGPContainer, self).__init__(name, asn, router_id,
                                              ctn_image_name)
         self.shared_volumes.append((self.config_dir, self.SHARED_VOLUME))
+        self.quagga_config_dir = '{0}/quagga'.format(self.config_dir)
+        self.shared_volumes.append((self.quagga_config_dir, self.QUAGGA_VOLUME))
 
         self.log_level = log_level
         self.prefix_set = None
@@ -67,6 +72,20 @@ class GoBGPContainer(BGPContainer):
         self.zebra = zebra
         self.zapi_version = zapi_version
         self.config_format = config_format
+
+        # bgp_config is equivalent to config.BgpConfigSet structure
+        # Example:
+        # bgp_config = {
+        #     'global': {
+        #         'confederation': {
+        #             'config': {
+        #                 'identifier': 10,
+        #                 'member-as-list': [65001],
+        #             }
+        #         },
+        #     },
+        # }
+        self.bgp_config = bgp_config or {}
 
         # To start OSPFd in GoBGP container, specify 'ospfd_config' as a dict
         # type value.
@@ -98,20 +117,18 @@ class GoBGPContainer(BGPContainer):
 
     def _start_zebra(self):
         if self.zapi_version == 2:
-            cmd = 'cp {0}/zebra.conf {1}/'.format(self.SHARED_VOLUME, self.QUAGGA_VOLUME)
-            self.local(cmd)
-            cmd = '/usr/lib/quagga/zebra -f {0}/zebra.conf'.format(self.QUAGGA_VOLUME)
+            daemon_bin = '/usr/lib/quagga/zebra'
         else:
-            cmd = 'zebra -u root -g root -f {0}/zebra.conf'.format(self.SHARED_VOLUME)
+            daemon_bin = 'zebra'
+        cmd = '{0} -f {1}/zebra.conf'.format(daemon_bin, self.QUAGGA_VOLUME)
         self.local(cmd, detach=True)
 
     def _start_ospfd(self):
         if self.zapi_version == 2:
-            cmd = 'cp {0}/ospfd.conf {1}/'.format(self.SHARED_VOLUME, self.QUAGGA_VOLUME)
-            self.local(cmd)
-            cmd = '/usr/lib/quagga/ospfd -f {0}/ospfd.conf'.format(self.QUAGGA_VOLUME)
+            daemon_bin = '/usr/lib/quagga/ospfd'
         else:
-            cmd = 'ospfd -u root -g root -f {0}/ospfd.conf'.format(self.SHARED_VOLUME)
+            daemon_bin = 'ospfd'
+        cmd = '{0} -f {1}/ospfd.conf'.format(daemon_bin, self.QUAGGA_VOLUME)
         self.local(cmd, detach=True)
 
     def run(self):
@@ -151,6 +168,29 @@ class GoBGPContainer(BGPContainer):
                 return p['metric']
         return None
 
+    @staticmethod
+    def _get_community(path):
+        for p in path['attrs']:
+            if p['type'] == BGP_ATTR_TYPE_COMMUNITIES:
+                return [community_str(c) for c in p['communities']]
+        return None
+
+    def _get_rib(self, dests_dict):
+        dests = []
+        for k, v in dests_dict.items():
+            for p in v:
+                p["nexthop"] = self._get_nexthop(p)
+                p["aspath"] = self._get_as_path(p)
+                p["local-pref"] = self._get_local_pref(p)
+                p["community"] = self._get_community(p)
+                p["med"] = self._get_med(p)
+                p["prefix"] = k
+                path_id = p.get("id", None)
+                if path_id:
+                    p["identifier"] = p["id"]
+            dests.append({'paths': v, 'prefix': k})
+        return dests
+
     def _trigger_peer_cmd(self, cmd, peer):
         peer_addr = self.peer_name(peer)
         cmd = 'gobgp neighbor {0} {1}'.format(peer_addr, cmd)
@@ -172,32 +212,12 @@ class GoBGPContainer(BGPContainer):
         peer_addr = self.peer_name(peer)
         cmd = 'gobgp -j neighbor {0} local {1} -a {2}'.format(peer_addr, prefix, rf)
         output = self.local(cmd, capture=True)
-        ret = json.loads(output)
-        dsts = []
-        for k, v in ret.iteritems():
-            for p in v:
-                p["nexthop"] = self._get_nexthop(p)
-                p["aspath"] = self._get_as_path(p)
-                p["local-pref"] = self._get_local_pref(p)
-                p["med"] = self._get_med(p)
-                p["prefix"] = k
-            dsts.append({'paths': v, 'prefix': k})
-        return dsts
+        return self._get_rib(json.loads(output))
 
     def get_global_rib(self, prefix='', rf='ipv4'):
         cmd = 'gobgp -j global rib {0} -a {1}'.format(prefix, rf)
         output = self.local(cmd, capture=True)
-        ret = json.loads(output)
-        dsts = []
-        for k, v in ret.iteritems():
-            for p in v:
-                p["nexthop"] = self._get_nexthop(p)
-                p["aspath"] = self._get_as_path(p)
-                p["local-pref"] = self._get_local_pref(p)
-                p["med"] = self._get_med(p)
-                p["prefix"] = k
-            dsts.append({'paths': v, 'prefix': k})
-        return dsts
+        return self._get_rib(json.loads(output))
 
     def monitor_global_rib(self, queue, rf='ipv4'):
         host = self.ip_addrs[0][1].split('/')[0]
@@ -283,9 +303,19 @@ class GoBGPContainer(BGPContainer):
     def create_config(self):
         self._create_config_bgp()
         if self.zebra:
+            local('mkdir -p {0}'.format(self.quagga_config_dir))
+            local('chmod 777 {0}'.format(self.quagga_config_dir))
             self._create_config_zebra()
             if self.ospfd_config:
                 self._create_config_ospfd()
+
+    def _merge_dict(self, dct, merge_dct):
+        for k, v in merge_dct.iteritems():
+            if (k in dct and isinstance(dct[k], dict)
+                    and isinstance(merge_dct[k], collections.Mapping)):
+                self._merge_dict(dct[k], merge_dct[k])
+            else:
+                dct[k] = merge_dct[k]
 
     def _create_config_bgp(self):
         config = {
@@ -302,6 +332,8 @@ class GoBGPContainer(BGPContainer):
             },
             'neighbors': [],
         }
+
+        self._merge_dict(config, self.bgp_config)
 
         if self.zebra and self.zapi_version == 2:
             config['global']['use-multiple-paths'] = {'config': {'enabled': True}}
@@ -334,15 +366,17 @@ class GoBGPContainer(BGPContainer):
 
             neigh_addr = None
             interface = None
+            peer_as = None
             if info['interface'] == '':
                 neigh_addr = info['neigh_addr'].split('/')[0]
+                peer_as = info['remote_as']
             else:
                 interface = info['interface']
             n = {
                 'config': {
                     'neighbor-address': neigh_addr,
                     'neighbor-interface': interface,
-                    'peer-as': peer.asn,
+                    'peer-as': peer_as,
                     'auth-password': info['passwd'],
                     'vrf': info['vrf'],
                     'remove-private-as': info['remove_private_as'],
@@ -419,6 +453,9 @@ class GoBGPContainer(BGPContainer):
             for typ, d in info.get('default-policy', {}).iteritems():
                 n['apply-policy']['config']['default-{0}-policy'.format(typ)] = _f(d)
 
+            if info['treat_as_withdraw']:
+                n['error-handling'] = {'config': {'treat-as-withdraw': True}}
+
             config['neighbors'].append(n)
 
         config['defined-sets'] = {}
@@ -463,13 +500,13 @@ class GoBGPContainer(BGPContainer):
         c = CmdBuffer()
         c << 'hostname zebra'
         c << 'password zebra'
-        c << 'log file {0}/zebra.log'.format(self.SHARED_VOLUME)
+        c << 'log file {0}/zebra.log'.format(self.QUAGGA_VOLUME)
         c << 'debug zebra packet'
         c << 'debug zebra kernel'
         c << 'debug zebra rib'
         c << ''
 
-        with open('{0}/zebra.conf'.format(self.config_dir), 'w') as f:
+        with open('{0}/zebra.conf'.format(self.quagga_config_dir), 'w') as f:
             print colors.yellow('[{0}\'s new zebra.conf]'.format(self.name))
             print colors.yellow(indent(str(c)))
             f.writelines(str(c))
@@ -483,10 +520,10 @@ class GoBGPContainer(BGPContainer):
             c << ' redistribute {0}'.format(redistribute)
         for network, area in self.ospfd_config.get('networks', {}).items():
             c << ' network {0} area {1}'.format(network, area)
-        c << 'log file {0}/ospfd.log'.format(self.SHARED_VOLUME)
+        c << 'log file {0}/ospfd.log'.format(self.QUAGGA_VOLUME)
         c << ''
 
-        with open('{0}/ospfd.conf'.format(self.config_dir), 'w') as f:
+        with open('{0}/ospfd.conf'.format(self.quagga_config_dir), 'w') as f:
             print colors.yellow('[{0}\'s new ospfd.conf]'.format(self.name))
             print colors.yellow(indent(str(c)))
             f.writelines(str(c))
@@ -505,12 +542,18 @@ class GoBGPContainer(BGPContainer):
                 r = CmdBuffer(' ')
                 r << 'gobgp global -a {0}'.format(v['rf'])
                 r << 'rib add {0}'.format(v['prefix'])
+                if v['identifier']:
+                    r << 'identifier {0}'.format(v['identifier'])
                 if v['next-hop']:
                     r << 'nexthop {0}'.format(v['next-hop'])
                 if v['local-pref']:
                     r << 'local-pref {0}'.format(v['local-pref'])
                 if v['med']:
                     r << 'med {0}'.format(v['med'])
+                if v['community']:
+                    r << 'community {0}'.format(
+                        ','.join(v['community'])
+                        if isinstance(v['community'], (list, tuple)) else v['community'])
                 cmd = str(r)
             elif v['rf'] == 'ipv4-flowspec' or v['rf'] == 'ipv6-flowspec':
                 cmd = 'gobgp global '\
@@ -518,6 +561,24 @@ class GoBGPContainer(BGPContainer):
             else:
                 raise Exception('unsupported route faily: {0}'.format(v['rf']))
             self.local(cmd)
+
+    def del_route(self, route, identifier=None, reload_config=True):
+        if route not in self.routes:
+            return
+        new_paths = []
+        for path in self.routes[route]:
+            if path['identifier'] != identifier:
+                new_paths.append(path)
+            else:
+                r = CmdBuffer(' ')
+                r << 'gobgp global -a {0}'.format(path['rf'])
+                r << 'rib del {0}'.format(path['prefix'])
+                if identifier:
+                    r << 'identifier {0}'.format(identifier)
+                cmd = str(r)
+                self.local(cmd)
+        self.routes[route] = new_paths
+        # no need to reload config
 
 
 class RawGoBGPContainer(GoBGPContainer):

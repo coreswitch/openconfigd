@@ -1,3 +1,4 @@
+//
 // Copyright (C) 2014-2017 Nippon Telegraph and Telephone Corporation.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +17,7 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
@@ -25,16 +27,19 @@ import (
 	"syscall"
 
 	"github.com/jessevdk/go-flags"
-	p "github.com/kr/pretty"
+	"github.com/kr/pretty"
+	log "github.com/sirupsen/logrus"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+
 	api "github.com/osrg/gobgp/api"
 	"github.com/osrg/gobgp/config"
 	"github.com/osrg/gobgp/packet/bgp"
 	"github.com/osrg/gobgp/server"
 	"github.com/osrg/gobgp/table"
-	log "github.com/sirupsen/logrus"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 )
+
+var version = "master"
 
 func main() {
 	sigCh := make(chan os.Signal, 1)
@@ -57,10 +62,16 @@ func main() {
 		TLS             bool   `long:"tls" description:"enable TLS authentication for gRPC API"`
 		TLSCertFile     string `long:"tls-cert-file" description:"The TLS cert file"`
 		TLSKeyFile      string `long:"tls-key-file" description:"The TLS key file"`
+		Version         bool   `long:"version" description:"show version number"`
 	}
 	_, err := flags.Parse(&opts)
 	if err != nil {
 		os.Exit(1)
+	}
+
+	if opts.Version {
+		fmt.Println("gobgpd version", version)
+		os.Exit(0)
 	}
 
 	if opts.CPUs == 0 {
@@ -115,7 +126,7 @@ func main() {
 		go config.ReadConfigfileServe(opts.ConfigFile, opts.ConfigType, configCh)
 		c := <-configCh
 		if opts.LogLevel == "debug" {
-			p.Println(c)
+			pretty.Println(c)
 		}
 		os.Exit(0)
 	}
@@ -167,21 +178,21 @@ func main() {
 						log.Fatalf("failed to set collector config: %s", err)
 					}
 				}
-				for _, c := range newConfig.RpkiServers {
-					if err := bgpServer.AddRpki(&c.Config); err != nil {
+				for i, _ := range newConfig.RpkiServers {
+					if err := bgpServer.AddRpki(&newConfig.RpkiServers[i].Config); err != nil {
 						log.Fatalf("failed to set rpki config: %s", err)
 					}
 				}
-				for _, c := range newConfig.BmpServers {
-					if err := bgpServer.AddBmp(&c.Config); err != nil {
+				for i, _ := range newConfig.BmpServers {
+					if err := bgpServer.AddBmp(&newConfig.BmpServers[i].Config); err != nil {
 						log.Fatalf("failed to set bmp config: %s", err)
 					}
 				}
-				for _, c := range newConfig.MrtDump {
-					if len(c.Config.FileName) == 0 {
+				for i, _ := range newConfig.MrtDump {
+					if len(newConfig.MrtDump[i].Config.FileName) == 0 {
 						continue
 					}
-					if err := bgpServer.EnableMrt(&c.Config); err != nil {
+					if err := bgpServer.EnableMrt(&newConfig.MrtDump[i].Config); err != nil {
 						log.Fatalf("failed to set mrt config: %s", err)
 					}
 				}
@@ -266,9 +277,9 @@ func main() {
 				}
 				updatePolicy = updatePolicy || u
 			}
-			for _, dn := range newConfig.DynamicNeighbors {
+			for i, dn := range newConfig.DynamicNeighbors {
 				log.Infof("Dynamic Neighbor %s is added to PeerGroup %s", dn.Config.Prefix, dn.Config.PeerGroup)
-				if err := bgpServer.AddDynamicNeighbor(&dn); err != nil {
+				if err := bgpServer.AddDynamicNeighbor(&newConfig.DynamicNeighbors[i]); err != nil {
 					log.Warn(err)
 				}
 			}

@@ -1,17 +1,23 @@
-// Copyright (C) 2015 Nippon Telegraph and Telephone Corporation.
+// Copyright (C) 2015-2017 Nippon Telegraph and Telephone Corporation.
 //
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
+// Permission is hereby granted, free of charge, to any person
+// obtaining a copy of this software and associated documentation files
+// (the "Software"), to deal in the Software without restriction,
+// including without limitation the rights to use, copy, modify, merge,
+// publish, distribute, sublicense, and/or sell copies of the Software,
+// and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
 //
-//    http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
-// implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+// The above copyright notice and this permission notice shall be
+// included in all copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+// LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+// OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 syntax = "proto3";
 
@@ -32,6 +38,7 @@ service GobgpApi {
   rpc EnableNeighbor(EnableNeighborRequest) returns (EnableNeighborResponse) {}
   rpc DisableNeighbor(DisableNeighborRequest) returns (DisableNeighborResponse) {}
   rpc GetRib(GetRibRequest) returns (GetRibResponse) {}
+  rpc GetPath(GetPathRequest) returns (stream Path) {}
   rpc ValidateRib(ValidateRibRequest) returns (ValidateRibResponse) {}
   rpc AddPath(AddPathRequest) returns (AddPathResponse) {}
   rpc DeletePath(DeletePathRequest) returns (DeletePathResponse) {}
@@ -71,6 +78,32 @@ service GobgpApi {
   rpc DeletePolicyAssignment(DeletePolicyAssignmentRequest) returns (DeletePolicyAssignmentResponse) {}
   rpc ReplacePolicyAssignment(ReplacePolicyAssignmentRequest) returns (ReplacePolicyAssignmentResponse) {}
   rpc GetRibInfo(GetRibInfoRequest) returns (GetRibInfoResponse) {}
+}
+
+// Constants for address families
+enum Family {
+  _ = 0;
+  IPv4 = 65537;
+  IPv6 = 131073;
+  IPv4_MC = 65538;
+  IPv6_MC = 131074;
+  IPv4_MPLS = 65540;
+  IPv6_MPLS = 131076;
+  IPv4_VPN = 65664;
+  IPv6_VPN = 131200;
+  IPv4_VPN_MC = 65665;
+  IPv6_VPN_MC = 131201;
+  VPLS = 1638465;
+  EVPN = 1638470;
+  RTC = 65668;
+  IPv4_ENCAP = 65543;
+  IPv6_ENCAP = 131079;
+  FLOW_SPEC_IPv4 = 65669;
+  FLOW_SPEC_IPv6 = 131205;
+  FLOW_SPEC_IPv4_VPN = 65670;
+  FLOW_SPEC_IPv6_VPN = 131206;
+  FLOW_SPEC_L2_VPN = 1638534;
+  OPAQUE = 1074594033;
 }
 
 message GetNeighborRequest {
@@ -198,6 +231,8 @@ message AddBmpRequest {
     PRE = 0;
     POST = 1;
     BOTH = 2;
+    LOCAL = 3;
+    ALL = 4;
   }
   MonitoringPolicy type = 3;
 }
@@ -492,24 +527,47 @@ enum Resource {
   VRF = 4;
 }
 
+message RPKIValidation{
+  enum State {
+    STATE_NONE = 0;
+    STATE_NOT_FOUND = 1;
+    STATE_VALID = 2;
+    STATE_INVALID = 3;
+  }
+
+  enum Reason {
+    REASOT_NONE = 0;
+    REASON_AS = 1;
+    REASON_LENGTH = 2;
+  }
+
+  State state = 1;
+  Reason reason = 2;
+  repeated Roa matched = 3;
+  repeated Roa unmatched_as = 4;
+  repeated Roa unmatched_length = 5;
+}
+
 message Path {
   bytes nlri = 1;
   repeated bytes pattrs = 2;
   int64 age = 3;
   bool best = 4;
   bool is_withdraw = 5;
-  int32 validation = 6;
-  bool no_implicit_withdraw = 7;
-  uint32 family = 8;
-  uint32 source_asn = 9;
-  string source_id = 10;
-  bool filtered = 11;
-  bool stale = 12;
-  bool is_from_external = 13;
-  string neighbor_ip = 14;
-  bytes uuid = 15; // only paths installed by AddPath API have this
-  bool is_nexthop_invalid = 16;
-  uint32 identifier = 17;
+  int32 validation = 6; // remains for backword compatibility
+  RPKIValidation validation_detail = 7;
+  bool no_implicit_withdraw = 8;
+  uint32 family = 9;
+  uint32 source_asn = 10;
+  string source_id = 11;
+  bool filtered = 12;
+  bool stale = 13;
+  bool is_from_external = 14;
+  string neighbor_ip = 15;
+  bytes uuid = 16; // only paths installed by AddPath API have this
+  bool is_nexthop_invalid = 17;
+  uint32 identifier = 18;
+  uint32 local_identifier = 19;
 }
 
 message Destination {
@@ -535,6 +593,26 @@ message GetRibResponse {
   Table table = 1;
 }
 
+// API representation of table.LookupOption
+enum TableLookupOption {
+  LOOKUP_EXACT = 0;
+  LOOKUP_LONGER = 1;
+  LOOKUP_SHORTER = 2;
+}
+
+// API representation of table.LookupPrefix
+message TableLookupPrefix {
+  string prefix = 1;
+  TableLookupOption lookup_option = 2;
+}
+
+message GetPathRequest {
+  Resource type = 1;
+  string name = 2;
+  uint32 family = 3;
+  repeated TableLookupPrefix prefixes = 4;
+}
+
 message ValidateRibRequest {
   Resource type = 1;
   uint32 family = 2;
@@ -544,7 +622,7 @@ message ValidateRibRequest {
 message ValidateRibResponse {
 }
 
-message Family {
+message AFIFamily {
   uint32 family = 1;
   bool mp_graceful_restart = 2;
   bool longlived_graceful_restart = 3;
@@ -552,6 +630,9 @@ message Family {
 }
 
 message Peer {
+  // Note: Regarding to the consistency with OpenConfig model, a list of
+  // address family should be removed from here, and should be configured with
+  // the list of AfiSafi instead.
   repeated uint32 families = 1;
   ApplyPolicy apply_policy = 2;
   PeerConf conf = 3;
@@ -561,9 +642,10 @@ message Peer {
   Timers timers = 7;
   Transport transport = 8;
   RouteServer route_server = 9;
-  repeated Family afi_families = 10;
+  repeated AFIFamily afi_families = 10;
   GracefulRestart graceful_restart = 11;
   repeated AfiSafi afi_safis = 12;
+  AddPaths add_paths = 13;
 }
 
 message ApplyPolicy {
@@ -597,7 +679,7 @@ message PeerConf {
   repeated bytes remote_cap = 11;
   repeated bytes local_cap = 12;
   string id = 13;
-  // Note: Regarding to the consistency with OpenConfig mode, list of
+  // Note: Regarding to the consistency with OpenConfig model, list of
   // PrefixLimit should be removed from here, and list of PrefixLimit in
   // AfiSafi should be used instead.
   repeated PrefixLimit prefix_limits = 14;
@@ -860,6 +942,22 @@ message AfiSafi {
   PrefixLimit prefix_limits = 6;
   RouteTargetMembership route_target_membership = 7;
   LongLivedGracefulRestart long_lived_graceful_restart = 8;
+  AddPaths add_paths = 9;
+}
+
+message AddPathsConfig {
+  bool receive = 1;
+  uint32 send_max = 2;
+}
+
+message AddPathsState {
+  bool receive = 1;
+  uint32 send_max = 2;
+}
+
+message AddPaths {
+  AddPathsConfig config = 1;
+  AddPathsState state = 2;
 }
 
 message Prefix {

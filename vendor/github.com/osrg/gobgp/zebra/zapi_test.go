@@ -63,7 +63,7 @@ func Test_InterfaceUpdateBody(t *testing.T) {
 	pos := INTERFACE_NAMSIZ
 	binary.BigEndian.PutUint32(buf[pos:], 1)
 	pos += 4
-	buf[pos] = INTERFACE_ACTIVE
+	buf[pos] = byte(INTERFACE_ACTIVE)
 	pos += 1
 	binary.BigEndian.PutUint64(buf[pos:], 1)
 	pos += 8 // flags
@@ -95,25 +95,29 @@ func Test_InterfaceAddressUpdateBody(t *testing.T) {
 	assert := assert.New(t)
 
 	//DecodeFromBytes
-	buf := make([]byte, 11)
+	buf := make([]byte, 15)
 	pos := 0
-	binary.BigEndian.PutUint32(buf[pos:], 0)
+	binary.BigEndian.PutUint32(buf[pos:], 0) // index
 	pos += 4
-	buf[pos] = 0x01
+	buf[pos] = 0x01 // flags
 	pos += 1
-	buf[pos] = 0x2
+	buf[pos] = 0x2 // family
 	pos += 1
-	ip := net.ParseIP("192.168.100.1").To4()
+	ip := net.ParseIP("192.168.100.1").To4() // prefix
 	copy(buf[pos:pos+4], []byte(ip))
 	pos += 4
-	buf[pos] = byte(24)
+	buf[pos] = byte(24) // prefix len
+	pos += 1
+	dst := net.ParseIP("192.168.100.255").To4() // destination
+	copy(buf[pos:pos+4], []byte(dst))
 
 	b := &InterfaceAddressUpdateBody{}
 	err := b.DecodeFromBytes(buf, 2)
 	assert.Equal(uint32(0), b.Index)
-	assert.Equal(uint8(1), b.Flags)
+	assert.Equal(INTERFACE_ADDRESS_FLAG(1), b.Flags)
 	assert.Equal("192.168.100.1", b.Prefix.String())
 	assert.Equal(uint8(24), b.Length)
+	assert.Equal("192.168.100.255", b.Destination.String())
 
 	// af invalid
 	buf[5] = 0x4
@@ -157,7 +161,7 @@ func Test_IPRouteBody_IPv4(t *testing.T) {
 	buf := make([]byte, 26)
 	buf[0] = byte(ROUTE_CONNECT)
 	buf[1] = byte(FLAG_SELECTED)
-	buf[2] = MESSAGE_NEXTHOP | MESSAGE_DISTANCE | MESSAGE_METRIC | MESSAGE_MTU
+	buf[2] = byte(MESSAGE_NEXTHOP | MESSAGE_DISTANCE | MESSAGE_METRIC | MESSAGE_MTU)
 	buf[3] = 24
 	ip := net.ParseIP("192.168.100.0").To4()
 	copy(buf[4:7], []byte(ip))
@@ -177,7 +181,7 @@ func Test_IPRouteBody_IPv4(t *testing.T) {
 	assert.Equal(nil, err)
 	assert.Equal("192.168.100.0", r.Prefix.String())
 	assert.Equal(uint8(0x18), r.PrefixLength)
-	assert.Equal(uint8(MESSAGE_NEXTHOP|MESSAGE_DISTANCE|MESSAGE_METRIC|MESSAGE_MTU), r.Message)
+	assert.Equal(MESSAGE_NEXTHOP|MESSAGE_DISTANCE|MESSAGE_METRIC|MESSAGE_MTU, r.Message)
 	assert.Equal("0.0.0.0", r.Nexthops[0].String())
 	assert.Equal(uint32(1), r.Ifindexs[0])
 	assert.Equal(uint8(0), r.Distance)
@@ -185,7 +189,7 @@ func Test_IPRouteBody_IPv4(t *testing.T) {
 	assert.Equal(uint32(1), r.Mtu)
 
 	//Serialize
-	buf, err = r.Serialize()
+	buf, err = r.Serialize(2)
 	assert.Equal(nil, err)
 	assert.Equal([]byte{0x2, 0x10, 0x1d}, buf[0:3])
 	assert.Equal([]byte{0x0, 0x1}, buf[3:5])
@@ -205,7 +209,7 @@ func Test_IPRouteBody_IPv4(t *testing.T) {
 	buf = make([]byte, 18)
 	buf[0] = byte(ROUTE_CONNECT)
 	buf[1] = byte(FLAG_SELECTED)
-	buf[2] = MESSAGE_NEXTHOP | MESSAGE_DISTANCE | MESSAGE_METRIC
+	buf[2] = byte(MESSAGE_NEXTHOP | MESSAGE_DISTANCE | MESSAGE_METRIC)
 	buf[3] = 24
 	ip = net.ParseIP("192.168.100.0").To4()
 	copy(buf[4:7], []byte(ip))
@@ -223,7 +227,7 @@ func Test_IPRouteBody_IPv4(t *testing.T) {
 	buf = make([]byte, 12)
 	buf[0] = byte(ROUTE_CONNECT)
 	buf[1] = byte(FLAG_SELECTED)
-	buf[2] = MESSAGE_DISTANCE | MESSAGE_METRIC
+	buf[2] = byte(MESSAGE_DISTANCE | MESSAGE_METRIC)
 	buf[3] = 24
 	ip = net.ParseIP("192.168.100.0").To4()
 	copy(buf[4:7], []byte(ip))
@@ -242,7 +246,7 @@ func Test_IPRouteBody_IPv6(t *testing.T) {
 	buf := make([]byte, 43)
 	buf[0] = byte(ROUTE_CONNECT)
 	buf[1] = byte(FLAG_SELECTED)
-	buf[2] = MESSAGE_NEXTHOP | MESSAGE_DISTANCE | MESSAGE_METRIC | MESSAGE_MTU
+	buf[2] = byte(MESSAGE_NEXTHOP | MESSAGE_DISTANCE | MESSAGE_METRIC | MESSAGE_MTU)
 	buf[3] = 64
 	ip := net.ParseIP("2001:db8:0:f101::").To16()
 	copy(buf[4:12], []byte(ip))
@@ -263,7 +267,7 @@ func Test_IPRouteBody_IPv6(t *testing.T) {
 	assert.Equal(nil, err)
 	assert.Equal("2001:db8:0:f101::", r.Prefix.String())
 	assert.Equal(uint8(64), r.PrefixLength)
-	assert.Equal(uint8(MESSAGE_NEXTHOP|MESSAGE_DISTANCE|MESSAGE_METRIC|MESSAGE_MTU), r.Message)
+	assert.Equal(MESSAGE_NEXTHOP|MESSAGE_DISTANCE|MESSAGE_METRIC|MESSAGE_MTU, r.Message)
 	assert.Equal("::", r.Nexthops[0].String())
 	assert.Equal(uint32(1), r.Ifindexs[0])
 	assert.Equal(uint8(0), r.Distance)
@@ -271,7 +275,7 @@ func Test_IPRouteBody_IPv6(t *testing.T) {
 	assert.Equal(uint32(1), r.Mtu)
 
 	//Serialize
-	buf, err = r.Serialize()
+	buf, err = r.Serialize(2)
 	assert.Equal(nil, err)
 	assert.Equal([]byte{0x2, 0x10, 0x1d}, buf[0:3])
 	assert.Equal([]byte{0x0, 0x1}, buf[3:5])
@@ -298,7 +302,7 @@ func Test_IPRouteBody_IPv6(t *testing.T) {
 	buf = make([]byte, 50)
 	buf[0] = byte(ROUTE_CONNECT)
 	buf[1] = byte(FLAG_SELECTED)
-	buf[2] = MESSAGE_NEXTHOP | MESSAGE_DISTANCE | MESSAGE_METRIC
+	buf[2] = byte(MESSAGE_NEXTHOP | MESSAGE_DISTANCE | MESSAGE_METRIC)
 	buf[3] = 24
 	ip = net.ParseIP("2001:db8:0:f101::").To4()
 	copy(buf[4:12], []byte(ip))
@@ -316,7 +320,7 @@ func Test_IPRouteBody_IPv6(t *testing.T) {
 	buf = make([]byte, 11)
 	buf[0] = byte(ROUTE_CONNECT)
 	buf[1] = byte(FLAG_SELECTED)
-	buf[2] = MESSAGE_DISTANCE | MESSAGE_METRIC
+	buf[2] = byte(MESSAGE_DISTANCE | MESSAGE_METRIC)
 	buf[3] = 16
 	ip = net.ParseIP("2501::").To16()
 	copy(buf[4:6], []byte(ip))
@@ -358,7 +362,7 @@ func Test_NexthopLookupBody(t *testing.T) {
 	assert.Equal("172.16.1.101", b.Nexthops[0].Addr.String())
 
 	//Serialize
-	buf, err = b.Serialize()
+	buf, err = b.Serialize(2)
 	ip = net.ParseIP("192.168.50.0").To4()
 	assert.Equal(nil, err)
 	assert.Equal([]byte(ip)[0:4], buf[0:4])
@@ -397,7 +401,7 @@ func Test_NexthopLookupBody(t *testing.T) {
 	assert.Equal("2001:db8:0:1111::1", b.Nexthops[0].Addr.String())
 
 	//Serialize
-	buf, err = b.Serialize()
+	buf, err = b.Serialize(2)
 	ip = net.ParseIP("2001:db8:0:f101::").To16()
 	assert.Equal(nil, err)
 	assert.Equal([]byte(ip)[0:16], buf[0:16])
@@ -440,7 +444,7 @@ func Test_ImportLookupBody(t *testing.T) {
 
 	//Serialize
 	b.PrefixLength = uint8(24)
-	buf, err = b.Serialize()
+	buf, err = b.Serialize(2)
 	ip = net.ParseIP("192.168.50.0").To4()
 	assert.Equal(nil, err)
 	assert.Equal(uint8(24), buf[0])
@@ -483,7 +487,7 @@ func Test_NexthopRegisterBody(t *testing.T) {
 	assert.Equal(net.ParseIP("2001:db8:1:1::1").To16(), b.Nexthops[1].Prefix)
 
 	// Test Serialize()
-	bufOut, err := b.Serialize()
+	bufOut, err := b.Serialize(3)
 	assert.Nil(err)
 
 	// Test serialised value

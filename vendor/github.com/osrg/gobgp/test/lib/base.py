@@ -48,8 +48,27 @@ BGP_ATTR_TYPE_CLUSTER_LIST = 10
 BGP_ATTR_TYPE_MP_REACH_NLRI = 14
 BGP_ATTR_TYPE_EXTENDED_COMMUNITIES = 16
 
+# with this label, we can do filtering in `docker ps` and `docker network prune`
+TEST_CONTAINER_LABEL = 'gobgp-test'
+TEST_NETWORK_LABEL = TEST_CONTAINER_LABEL
+
 env.abort_exception = RuntimeError
 output.stderr = False
+
+
+def community_str(i):
+    """
+    Converts integer in to colon separated two bytes decimal strings like
+    BGP Community or Large Community representation.
+
+    For example, this function converts 13107300 = ((200 << 16) | 100)
+    into "200:100".
+    """
+    values = []
+    while i > 0:
+        values.append(str(i & 0xffff))
+        i >>= 16
+    return ':'.join(reversed(values))
 
 
 def wait_for_completion(f, timeout=120):
@@ -103,10 +122,10 @@ def make_gobgp_ctn(tag='gobgp', local_gobgp_path='', from_image='osrg/quagga'):
 
     c = CmdBuffer()
     c << 'FROM {0}'.format(from_image)
-    c << 'RUN go get -d github.com/osrg/gobgp/...; exit 0'
-    c << 'RUN rm -rf /go/src/github.com/osrg/gobgp'
+    c << 'RUN go get -u github.com/golang/dep/cmd/dep'
+    c << 'RUN mkdir -p /go/src/github.com/osrg/'
     c << 'ADD gobgp /go/src/github.com/osrg/gobgp/'
-    c << 'RUN go get github.com/osrg/gobgp/...'
+    c << 'RUN cd /go/src/github.com/osrg/gobgp && dep ensure && go install ./gobgpd ./gobgp'
 
     rindex = local_gobgp_path.rindex('gobgp')
     if rindex < 0:
@@ -141,7 +160,7 @@ class Bridge(object):
             v6 = ''
             if self.subnet.version == 6:
                 v6 = '--ipv6'
-            self.id = local('docker network create --driver bridge {0} --subnet {1} {2}'.format(v6, subnet, self.name), capture=True)
+            self.id = local('docker network create --driver bridge {0} --subnet {1} --label {2} {3}'.format(v6, subnet, TEST_NETWORK_LABEL, self.name), capture=True)
         try_several_times(f)
 
         self.self_ip = self_ip
@@ -185,7 +204,7 @@ class Container(object):
 
     def docker_name(self):
         if TEST_PREFIX == DEFAULT_TEST_PREFIX:
-            return self.name
+            return '{0}'.format(self.name)
         return '{0}_{1}'.format(TEST_PREFIX, self.name)
 
     def next_if_name(self):
@@ -198,7 +217,7 @@ class Container(object):
         c << "docker run --privileged=true"
         for sv in self.shared_volumes:
             c << "-v {0}:{1}".format(sv[0], sv[1])
-        c << "--name {0} -id {1}".format(self.docker_name(), self.image)
+        c << "--name {0} -l {1} -id {2}".format(self.docker_name(), TEST_CONTAINER_LABEL, self.image)
         self.id = try_several_times(lambda: local(str(c), capture=True))
         self.is_running = True
         self.local("ip li set up dev lo")
@@ -311,7 +330,8 @@ class BGPContainer(Container):
                  flowspec=False, bridge='', reload_config=True, as2=False,
                  graceful_restart=None, local_as=None, prefix_limit=None,
                  v6=False, llgr=None, vrf='', interface='', allow_as_in=0,
-                 remove_private_as=None, replace_peer_as=False, addpath=False):
+                 remove_private_as=None, replace_peer_as=False, addpath=False,
+                 treat_as_withdraw=False, remote_as=None):
         neigh_addr = ''
         local_addr = ''
         it = itertools.product(self.ip_addrs, peer.ip_addrs)
@@ -356,7 +376,9 @@ class BGPContainer(Container):
                             'allow_as_in': allow_as_in,
                             'remove_private_as': remove_private_as,
                             'replace_peer_as': replace_peer_as,
-                            'addpath': addpath}
+                            'addpath': addpath,
+                            'treat_as_withdraw': treat_as_withdraw,
+                            'remote_as': remote_as or peer.asn}
         if self.is_running and reload_config:
             self.create_config()
             self.reload_config()
@@ -382,18 +404,28 @@ class BGPContainer(Container):
                   local_pref=None, identifier=None, reload_config=True):
         if route not in self.routes:
             self.routes[route] = []
-        self.routes[route].append({'prefix': route,
-                              'rf': rf,
-                              'attr': attribute,
-                              'next-hop': nexthop,
-                              'as-path': aspath,
-                              'community': community,
-                              'med': med,
-                              'local-pref': local_pref,
-                              'extended-community': extendedcommunity,
-                              'identifier': identifier,
-                              'matchs': matchs,
-                              'thens': thens})
+        self.routes[route].append({
+            'prefix': route,
+            'rf': rf,
+            'attr': attribute,
+            'next-hop': nexthop,
+            'as-path': aspath,
+            'community': community,
+            'med': med,
+            'local-pref': local_pref,
+            'extended-community': extendedcommunity,
+            'identifier': identifier,
+            'matchs': matchs,
+            'thens': thens,
+        })
+        if self.is_running and reload_config:
+            self.create_config()
+            self.reload_config()
+
+    def del_route(self, route, identifier=None, reload_config=True):
+        if route not in self.routes:
+            return
+        self.routes[route] = [p for p in self.routes[route] if p['identifier'] != identifier]
         if self.is_running and reload_config:
             self.create_config()
             self.reload_config()

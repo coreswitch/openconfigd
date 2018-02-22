@@ -26,13 +26,63 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func makeMonitorRouteArgs(p *table.Path, showIdentifier bgp.BGPAddPathMode) []interface{} {
+	pathStr := make([]interface{}, 0)
+
+	// Title
+	title := "ROUTE"
+	if p.IsWithdraw {
+		title = "DELROUTE"
+	}
+	pathStr = append(pathStr, title)
+
+	// NLRI
+	// If Add-Path required, append Path Identifier.
+	nlri := p.GetNlri()
+	if showIdentifier != bgp.BGP_ADD_PATH_NONE {
+		pathStr = append(pathStr, nlri.PathIdentifier())
+	}
+	pathStr = append(pathStr, nlri)
+
+	// Next Hop
+	nexthop := "fictitious"
+	if n := p.GetNexthop(); n != nil {
+		nexthop = p.GetNexthop().String()
+	}
+	pathStr = append(pathStr, nexthop)
+
+	// AS_PATH
+	pathStr = append(pathStr, p.GetAsString())
+
+	// Path Attributes
+	pathStr = append(pathStr, getPathAttributeString(p))
+
+	return pathStr
+}
+
+func monitorRoute(pathList []*table.Path, showIdentifier bgp.BGPAddPathMode) {
+	var pathStrs [][]interface{}
+
+	for _, p := range pathList {
+		pathStrs = append(pathStrs, makeMonitorRouteArgs(p, showIdentifier))
+	}
+
+	format := "[%s] %s via %s aspath [%s] attrs %s\n"
+	if showIdentifier != bgp.BGP_ADD_PATH_NONE {
+		format = "[%s] %d:%s via %s aspath [%s] attrs %s\n"
+	}
+	for _, pathStr := range pathStrs {
+		fmt.Printf(format, pathStr...)
+	}
+}
+
 func NewMonitorCmd() *cobra.Command {
 
 	var current bool
 
 	monitor := func(recver interface {
 		Recv() (*table.Destination, error)
-	}, showIdentifier bool) {
+	}, showIdentifier bgp.BGPAddPathMode) {
 		for {
 			dst, err := recver.Recv()
 			if err == io.EOF {
@@ -44,7 +94,7 @@ func NewMonitorCmd() *cobra.Command {
 				j, _ := json.Marshal(dst.GetAllKnownPathList())
 				fmt.Println(string(j))
 			} else {
-				ShowRoute(dst.GetAllKnownPathList(), false, false, false, showIdentifier, true, false)
+				monitorRoute(dst.GetAllKnownPathList(), showIdentifier)
 			}
 		}
 	}
@@ -60,7 +110,7 @@ func NewMonitorCmd() *cobra.Command {
 			if err != nil {
 				exitWithError(err)
 			}
-			monitor(recver, false)
+			monitor(recver, bgp.BGP_ADD_PATH_NONE)
 		},
 	}
 	ribCmd.PersistentFlags().StringVarP(&subOpts.AddressFamily, "address-family", "a", "", "address family")
@@ -118,7 +168,7 @@ func NewMonitorCmd() *cobra.Command {
 			if err != nil {
 				exitWithError(err)
 			}
-			monitor(recver, true)
+			monitor(recver, bgp.BGP_ADD_PATH_RECEIVE)
 		},
 	}
 	adjInCmd.PersistentFlags().StringVarP(&subOpts.AddressFamily, "address-family", "a", "", "address family")

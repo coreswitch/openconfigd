@@ -58,16 +58,16 @@ type Engine interface {
 	SeriesN() int64
 
 	MeasurementExists(name []byte) (bool, error)
-	MeasurementNamesByExpr(expr influxql.Expr) ([][]byte, error)
+	MeasurementNamesByExpr(auth query.Authorizer, expr influxql.Expr) ([][]byte, error)
 	MeasurementNamesByRegex(re *regexp.Regexp) ([][]byte, error)
 	MeasurementFields(measurement []byte) *MeasurementFields
 	ForEachMeasurementName(fn func(name []byte) error) error
 	DeleteMeasurement(name []byte) error
 
-	// TagKeys(name []byte) ([][]byte, error)
 	HasTagKey(name, key []byte) (bool, error)
 	MeasurementTagKeysByExpr(name []byte, expr influxql.Expr) (map[string]struct{}, error)
 	MeasurementTagKeyValuesByExpr(auth query.Authorizer, name []byte, key []string, expr influxql.Expr, keysSorted bool) ([][]string, error)
+	TagKeyHasAuthorizedSeries(auth query.Authorizer, name []byte, key string) bool
 	ForEachMeasurementTagKey(name []byte, fn func(key []byte) error) error
 	TagKeyCardinality(name, key []byte) int
 
@@ -151,7 +151,8 @@ type EngineOptions struct {
 	ShardID       uint64
 	InmemIndex    interface{} // shared in-memory index
 
-	CompactionLimiter limiter.Fixed
+	CompactionLimiter           limiter.Fixed
+	CompactionThroughputLimiter limiter.Rate
 
 	Config Config
 }

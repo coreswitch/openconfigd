@@ -1,3 +1,28 @@
+## v1.4.3 [2017-01-30]
+
+### Configuration Changes
+
+#### `[data]` Section
+
+The default value for `cache-snapshot-memory-size` has been changed from `25m` to `256m`.
+
+### Bugfixes
+
+- [#9129](https://github.com/influxdata/influxdb/pull/9129): Fix delete causing too much data to disappear
+- [#9137](https://github.com/influxdata/influxdb/pull/9137): Implement FGA features on remaining meta commands.
+- [#9163](https://github.com/influxdata/influxdb/pull/9163): Fix race condition in the merge iterator close method.
+- [#9144](https://github.com/influxdata/influxdb/issues/9144): Fix query compilation so multiple nested distinct calls is allowable
+- [#9161](https://github.com/influxdata/influxdb/issues/9161): DELETE doesn't delete fresh data
+- [#9185](https://github.com/influxdata/influxdb/pull/9185): Fix compaction aborting early and dropping remaining series
+- [#9201](https://github.com/influxdata/influxdb/issues/9201): Fix higher disk i/o utilization
+- [#9217](https://github.com/influxdata/influxdb/issues/9217): Fix performance decline of the 1.4 version
+- [#9226](https://github.com/influxdata/influxdb/issues/9226): Allow lone boolean literals in a condition expression.
+- [#9216](https://github.com/influxdata/influxdb/issues/9216): Prevent a panic when a query simultaneously finishes and is killed at the same time.
+- [#9290](https://github.com/influxdata/influxdb/issues/9290): Fix regression to allow binary operations on literals.
+- [#9353](https://github.com/influxdata/influxdb/pull/9353): Fix panic in msgpack httpd WriteResponse error handler.
+- [#9134](https://github.com/influxdata/influxdb/issues/9134): Fix panic during Prometheus regex parsing.
+- [#9125](https://github.com/influxdata/influxdb/issues/9125): Fix regression in SHOW TAG KEYS performance.
+
 ## v1.4.2 [2017-11-15]
 
 Refer to the 1.4.0 breaking changes section if `influxd` fails to start with an `incompatible tsi1 index MANIFEST` error.

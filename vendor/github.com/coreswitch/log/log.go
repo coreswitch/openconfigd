@@ -59,7 +59,9 @@ func SetJSONFormatter() {
 
 //
 func SetTextFormatter() {
-	origLogger.Formatter = &logrus.TextFormatter{}
+	origLogger.Formatter = &logrus.TextFormatter{
+		DisableTimestamp: true,
+	}
 }
 
 type Logger interface {

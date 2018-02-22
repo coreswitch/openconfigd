@@ -1,7 +1,7 @@
 package uuid
 
 import (
-	"gopkg.in/stretchr/testify.v1/assert"
+	"github.com/stretchr/testify/assert"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -19,7 +19,7 @@ func TestNow(t *testing.T) {
 
 func TestTimestamp_Add(t *testing.T) {
 	now := Now()
-	assert.True(t, now.Add(time.Second) == now + Timestamp((time.Second / 100)), "The times should be equal")
+	assert.True(t, now.Add(time.Second) == now+Timestamp((time.Second/100)), "The times should be equal")
 }
 
 func TestTimestamp_String(t *testing.T) {
@@ -30,7 +30,7 @@ func TestTimestamp_String(t *testing.T) {
 
 func TestTimestamp_Sub(t *testing.T) {
 	now := Now()
-	assert.True(t, now.Sub(time.Second) == now - Timestamp((time.Second / 100)), "The times should be equal")
+	assert.True(t, now.Sub(time.Second) == now-Timestamp((time.Second/100)), "The times should be equal")
 }
 
 func TestTimestamp_Time(t *testing.T) {
@@ -44,7 +44,7 @@ func TestSpinnerNext(t *testing.T) {
 
 	spin := spinner{}
 	spin.Resolution = defaultSpinResolution
-	spin.now = Now
+
 	times := make([]Timestamp, size)
 
 	for i := 0; i < size; i++ {
@@ -64,7 +64,6 @@ func TestSpinnerNext(t *testing.T) {
 		Count:      defaultSpinResolution - 1,
 		Timestamp:  Now(),
 		Resolution: 1024,
-		now: Now,
 	}
 
 	for i := 0; i < size; i++ {
@@ -84,7 +83,6 @@ func TestSpinnerNext(t *testing.T) {
 		Count:      0,
 		Timestamp:  Now(),
 		Resolution: 1,
-		now: Now,
 	}
 
 	for i := 0; i < size; i++ {
@@ -104,7 +102,6 @@ func TestSpinnerNext(t *testing.T) {
 
 	spin = spinner{}
 	spin.Resolution = defaultSpinResolution
-	spin.now = Now
 
 	times = make([]Timestamp, size)
 
@@ -131,29 +128,6 @@ func TestSpinnerNext(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-
-	for j := size - 1; j >= 0; j-- {
-		for k := 0; k < size; k++ {
-			if k == j {
-				continue
-			}
-			assert.NotEqual(t, "Timestamps should never be equal", times[j], times[k])
-		}
-	}
-}
-
-func TestSpinnerNow(t *testing.T) {
-	size := defaultSpinResolution * 1
-
-	spin := spinner{}
-	spin.Resolution = defaultSpinResolution
-
-	spin.now = Now
-	times := make([]Timestamp, size)
-
-	for i := 0; i < size; i++ {
-		times[i] = spin.next()
-	}
 
 	for j := size - 1; j >= 0; j-- {
 		for k := 0; k < size; k++ {

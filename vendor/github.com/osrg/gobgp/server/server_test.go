@@ -200,7 +200,8 @@ func TestNumGoroutineWithAddDeleteNeighbor(t *testing.T) {
 
 func newPeerandInfo(myAs, as uint32, address string, rib *table.TableManager) (*Peer, *table.PeerInfo) {
 	nConf := &config.Neighbor{Config: config.NeighborConfig{PeerAs: as, NeighborAddress: address}}
-	config.SetDefaultNeighborConfigValues(nConf, myAs)
+	gConf := &config.Global{Config: config.GlobalConfig{As: myAs}}
+	config.SetDefaultNeighborConfigValues(nConf, nil, gConf)
 	policy := table.NewRoutingPolicy()
 	policy.Reset(&config.RoutingPolicy{}, nil)
 	p := NewPeer(
@@ -215,7 +216,7 @@ func newPeerandInfo(myAs, as uint32, address string, rib *table.TableManager) (*
 }
 
 func process(rib *table.TableManager, l []*table.Path) (*table.Path, *table.Path) {
-	news, olds, _ := dstsToPaths(table.GLOBAL_RIB_NAME, rib.ProcessPaths(l))
+	news, olds, _ := dstsToPaths(table.GLOBAL_RIB_NAME, rib.ProcessPaths(l), false)
 	if len(news) != 1 {
 		panic("can't handle multiple paths")
 	}

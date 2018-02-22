@@ -1,4 +1,4 @@
-// This package provides savers for the package github.com/myesui/uuid RFC4122 and DCE 1.1 UUIDs.
+// This package provides savers for the package github.com/twinj/uuid RFC4122 and DCE 1.1 UUIDs.
 //
 // Use this package for V1 and V2 UUIDs or your own UUID implementation.
 //
@@ -13,5 +13,5 @@
 // The example code in the specification was used as reference
 // for design.
 //
-// Copyright (C) 2016 myesui@github.com  2014 MIT licence
+// Copyright (C) 2016 twinj@github.com  2014 MIT licence
 package savers

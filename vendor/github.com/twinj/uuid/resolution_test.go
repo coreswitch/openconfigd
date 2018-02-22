@@ -1,64 +1,99 @@
-package uuid_test
+package uuid
 
-import (
-	. "github.com/myesui/uuid"
-	"testing"
-	"log"
-	"io/ioutil"
-)
-
-func BenchmarkNewV1Resolution_0(b *testing.B) {
-	run(b, 0)
-}
+import "testing"
 
 func BenchmarkNewV1Resolution_1024(b *testing.B) {
-	run(b, 1024) // default 1024
+	gen := NewGenerator(GeneratorConfig{})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gen.NewV1() // Sets up initial store on first run
+	}
+	b.StopTimer()
+	b.ReportAllocs()
 }
 
 func BenchmarkNewV1Resolution_2048(b *testing.B) {
-	run(b, 2048)
+	gen := NewGenerator(GeneratorConfig{Resolution: 2048})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gen.NewV1() // Sets up initial store on first run
+	}
+	b.StopTimer()
+	b.ReportAllocs()
 }
 
 func BenchmarkNewV1Resolution_3072(b *testing.B) {
-	run(b, 3072)
+	gen := NewGenerator(GeneratorConfig{Resolution: 3072})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gen.NewV1() // Sets up initial store on first run
+	}
+	b.StopTimer()
+	b.ReportAllocs()
 }
 
 func BenchmarkNewV1Resolution_4096(b *testing.B) {
-	run(b, 4096)
+	gen := NewGenerator(GeneratorConfig{Resolution: 4096})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gen.NewV1() // Sets up initial store on first run
+	}
+	b.StopTimer()
+	b.ReportAllocs()
 }
 
 func BenchmarkNewV1Resolution_5120(b *testing.B) {
-	run(b, 5120)
+	gen := NewGenerator(GeneratorConfig{Resolution: 5120})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gen.NewV1() // Sets up initial store on first run
+	}
+	b.StopTimer()
+	b.ReportAllocs()
 }
 
 func BenchmarkNewV1Resolution_6144(b *testing.B) {
-	run(b, 6144)
+	gen := NewGenerator(GeneratorConfig{Resolution: 6144})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gen.NewV1() // Sets up initial store on first run
+	}
+	b.StopTimer()
+	b.ReportAllocs()
 }
 
 func BenchmarkNewV1Resolution_7168(b *testing.B) {
-	run(b, 7168)
+	gen := NewGenerator(GeneratorConfig{Resolution: 7168})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gen.NewV1() // Sets up initial store on first run
+	}
+	b.StopTimer()
+	b.ReportAllocs()
 }
 
 func BenchmarkNewV1Resolution_8192(b *testing.B) {
-	run(b, 8192) // Best for my machine
+	gen := NewGenerator(GeneratorConfig{Resolution: 8192})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gen.NewV1() // Sets up initial store on first run
+	}
+	b.StopTimer()
+	b.ReportAllocs()
 }
 
 func BenchmarkNewV1Resolution_9216(b *testing.B) {
-	run(b, 9216)
+	gen := NewGenerator(GeneratorConfig{Resolution: 9216})
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		gen.NewV1() // Sets up initial store on first run
+	}
+	b.StopTimer()
+	b.ReportAllocs()
 }
 
 func BenchmarkNewV1Resolution_18432(b *testing.B) {
-	run(b, 18432)
-}
-
-func BenchmarkNewV1Resolution_36864(b *testing.B) {
-	run(b, 36864)
-}
-
-var gen *Generator
-
-func run(b *testing.B, resolution uint) {
-	gen, _ = NewGenerator(&GeneratorConfig{Resolution: resolution, Logger: log.New(ioutil.Discard, "", 0)})
+	gen := NewGenerator(GeneratorConfig{Resolution: 18432})
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		gen.NewV1() // Sets up initial store on first run
