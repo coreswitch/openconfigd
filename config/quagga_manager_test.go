@@ -12,10 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package config_test
+package config
 
 import (
-	"github.com/hash-set/openconfigd/config"
 	"strconv"
 	"testing"
 )
@@ -25,13 +24,13 @@ func TestProcessQuaggaConfigSync(t *testing.T) {
 
 	testInstanceName := "local"
 	completeNotify := make(chan int)
-	config.QuaggaConfigDir = "/tmp/"
+	QuaggaConfigDir = "/tmp/"
 	for i := 0; i < 10; i++ {
 		testJsonString := `{"lan-1": [{"quagga-config": "test1", "routing-protocol": "bgp"}, {"quagga-config": "test2", "routing-protocol": "rip"}],
 		"lan-2": [{"quagga-config": "test1", "routing-protocol": "bgp"}, {"quagga-config": "test2", "routing-protocol": "rip"}]}`
 		testVrfId := i
 		go func(loopcount int, jsonstring string, vrfid int, instName string) {
-			config.QuaggaConfigSync(jsonstring, vrfid, instName)
+			QuaggaConfigSync(jsonstring, vrfid, instName)
 			completeNotify <- loopcount
 		}(i, testJsonString, testVrfId, testInstanceName)
 	}
@@ -42,7 +41,7 @@ func TestProcessQuaggaConfigSync(t *testing.T) {
 		"lan-2": [{"quagga-config": "test1", "routing-protocol": "bgp"}, {"quagga-config": "test2", "routing-protocol": "rip"}]}`
 		testVrfId := i
 		go func(loopcount int, jsonstring string, vrfid int, instName string) {
-			config.QuaggaConfigSync(jsonstring, vrfid, instName)
+			QuaggaConfigSync(jsonstring, vrfid, instName)
 			completeNotify <- loopcount
 		}(i, testJsonString, testVrfId, testInstanceName)
 	}
@@ -55,7 +54,7 @@ func TestProcessQuaggaConfigSync(t *testing.T) {
 		}
 	}
 
-	localManagerInstance := config.GetIntanceManager("local")
+	localManagerInstance := GetIntanceManager("local")
 	if localManagerInstance == nil {
 		t.Errorf("Local Instance Manger is nil")
 	}
@@ -72,7 +71,7 @@ func TestProcessQuaggaConfigSync(t *testing.T) {
 		}
 	}
 
-	remoteManagerInstance := config.GetIntanceManager("remote")
+	remoteManagerInstance := GetIntanceManager("remote")
 	if remoteManagerInstance == nil {
 		t.Errorf("Remote Instance Manger is nil")
 	}
