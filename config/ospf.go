@@ -81,6 +81,7 @@ service password-encryption
 router ospf
   redistribute bgp metric-type 1
   redistribute connected metric-type 1
+  default-information originate metric-type 1
   distance 220
 {{areaAuthentication .OspfArray}}
 {{range $i, $v := .OspfArray}}  network {{$v.Network}} area {{$v.Area}}
