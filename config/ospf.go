@@ -23,10 +23,12 @@ import (
 )
 
 type Ospf struct {
-	Network      string        `mapstructure:"network" json:"network,omitempty"`
-	Area         uint32        `mapstructure:"area" json:"area,omitempty"`
-	InterfaceIps []InterfaceIp `mapstructure:"interfaces" json:"interfaces,omitempty"`
-	Interface    string        `mapstructure:"interface" json:"interface,omitempty"` // Deplicated from 2.4
+	Network      string                `mapstructure:"network" json:"network,omitempty"`
+	Area         uint32                `mapstructure:"area" json:"area,omitempty"`
+	InterfaceIps []InterfaceIp         `mapstructure:"interfaces" json:"interfaces,omitempty"`
+	Interface    string                `mapstructure:"interface" json:"interface,omitempty"` // Deplicated from 2.4
+	PrimaryList  []DistributeListEntry `mapstructure:"primary-distribute-list" json:"primary-distribute-list,omitempty"`
+	BackupList   []DistributeListEntry `mapstructure:"backup-distribute-list" json:"backup-distribute-list,omitempty"`
 }
 
 type OspfArray []Ospf

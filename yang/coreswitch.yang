@@ -40,6 +40,9 @@ module coreswitch {
       leaf hub-node {
         type string;
       }
+      leaf distribute-list-ospf {
+        type string;
+      }
       container dhcp {
         uses "dhcp:dhcp";
       }

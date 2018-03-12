@@ -494,6 +494,7 @@ func VrfParse(vrfId int, jsonStr string) {
 	VrrpVrfSync(vrfId, &vrf)
 	QuaggaVrfSync(vrfId, &vrf)
 	OspfVrfSync(vrfId, &vrf)
+	DistributeListSync(vrfId, &vrf)
 
 	// GoBGP VrfConfig
 	vrfConfig := vrf.Copy()
@@ -518,6 +519,7 @@ func VrfDelete(vrfId int, vrfIfDelete bool) {
 	VrrpVrfDelete(vrfId)
 	QuaggaVrfDelete(vrfId)
 	OspfVrfDelete(vrfId)
+	DistributeListDelete(vrfId)
 	EtcdVrfDelete(vrfId, vrfIfDelete)
 
 	delete(EtcdVrfMap, vrfId)

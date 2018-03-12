@@ -927,6 +927,7 @@ func (this *ConfigComponent) Stop() component.Component {
 	RelayExitFunc()
 	QuaggaExit()
 	OspfVrfExit()
+	DistributeListExit()
 	GobgpWanExit()
 
 	return this

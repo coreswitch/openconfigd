@@ -234,6 +234,8 @@ loop:
 			go SubscribeRemoteAdd(stream, msg)
 		case rpc.ConfigType_SUBSCRIBE_MULTI:
 			go SubscribeRemoteAddMulti(stream, msg)
+		case rpc.ConfigType_SUBSCRIBE_REQUEST:
+			go SubscribeAdd(stream, msg)
 		case rpc.ConfigType_SET:
 			YangConfigPush(msg.Path)
 		case rpc.ConfigType_DELETE:
