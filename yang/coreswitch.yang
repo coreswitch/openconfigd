@@ -155,6 +155,9 @@ module coreswitch {
         }
       }
     }
+    leaf nexthop-walker {
+      type empty;
+    }
   }
 
   container dhcp {
