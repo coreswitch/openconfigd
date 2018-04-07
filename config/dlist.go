@@ -31,20 +31,21 @@ type DistributeList struct {
 var DistributeListMap = map[int]DistributeList{}
 
 func DistributeListSync(vrfId int, cfg *VrfsConfig) {
+	// Delete existing distribute-list.
+	ExecLine(fmt.Sprintf("delete prefix-list distribute-list-vrf%d", vrfId))
+	ExecLine(fmt.Sprintf("delete vrf name vrf%d distribute-list-ospf distribute-list-vrf%d", vrfId, vrfId))
+	if len(cfg.Ospf) == 0 {
+		fmt.Println("DistributeListSync Empty ospf config returning")
+		return
+	}
+
 	dlist := DistributeList{}
 
 	for _, ospf := range cfg.Ospf {
 		for _, entry := range ospf.PrimaryList {
 			dlist.Primary = append(dlist.Primary, entry)
 		}
-		for _, entry := range ospf.BackupList {
-			dlist.Backup = append(dlist.Backup, entry)
-		}
 	}
-
-	// Delete existing distribute-list.
-	ExecLine(fmt.Sprintf("delete prefix-list distribute-list-vrf%d-primary", vrfId))
-	ExecLine(fmt.Sprintf("delete prefix-list distribute-list-vrf%d-backup", vrfId))
 
 	// Add distribute-list.
 	ExecLine(fmt.Sprintf("set vrf name vrf%d distribute-list-ospf distribute-list-vrf%d", vrfId, vrfId))
@@ -53,15 +54,16 @@ func DistributeListSync(vrfId int, cfg *VrfsConfig) {
 		if entry.Action == "" {
 			entry.Action = "permit"
 		}
-		ExecLine(fmt.Sprintf("set prefix-list distribute-list-vrf%d-primary seq %d action %s", vrfId, (pos+1)*5, entry.Action))
-		ExecLine(fmt.Sprintf("set prefix-list distribute-list-vrf%d-primary seq %d prefix %s", vrfId, (pos+1)*5, entry.Prefix))
+		ExecLine(fmt.Sprintf("set prefix-list distribute-list-vrf%d seq %d action %s", vrfId, (pos+1)*5, entry.Action))
+		ExecLine(fmt.Sprintf("set prefix-list distribute-list-vrf%d seq %d prefix %s", vrfId, (pos+1)*5, entry.Prefix))
 		if entry.Le != nil {
-			ExecLine(fmt.Sprintf("set prefix-list distribute-list-vrf%d-primary seq %d le %d", vrfId, (pos+1)*5, *entry.Le))
+			ExecLine(fmt.Sprintf("set prefix-list distribute-list-vrf%d seq %d le %d", vrfId, (pos+1)*5, *entry.Le))
 		}
 		if entry.Ge != nil {
-			ExecLine(fmt.Sprintf("set prefix-list distribute-list-vrf%d-primary seq %d ge %d", vrfId, (pos+1)*5, *entry.Ge))
+			ExecLine(fmt.Sprintf("set prefix-list distribute-list-vrf%d seq %d ge %d", vrfId, (pos+1)*5, *entry.Ge))
 		}
 	}
+/*
 	for pos, entry := range dlist.Backup {
 		if entry.Action == "" {
 			entry.Action = "permit"
@@ -75,6 +77,7 @@ func DistributeListSync(vrfId int, cfg *VrfsConfig) {
 			ExecLine(fmt.Sprintf("set prefix-list distribute-list-vrf%d-backup seq %d ge %d", vrfId, (pos+1)*5, *entry.Ge))
 		}
 	}
+*/
 	Commit()
 
 	DistributeListMap[vrfId] = dlist
@@ -82,16 +85,16 @@ func DistributeListSync(vrfId int, cfg *VrfsConfig) {
 
 func DistributeListDelete(vrfId int) {
 	ExecLine(fmt.Sprintf("delete vrf name vrf%d distribute-list-ospf distribute-list-vrf%d", vrfId, vrfId))
-	ExecLine(fmt.Sprintf("delete prefix-list distribute-list-vrf%d-primary", vrfId))
-	ExecLine(fmt.Sprintf("delete prefix-list distribute-list-vrf%d-backup", vrfId))
+	ExecLine(fmt.Sprintf("delete prefix-list distribute-list-vrf%d", vrfId))
+	//ExecLine(fmt.Sprintf("delete prefix-list distribute-list-vrf%d-backup", vrfId))
 	delete(DistributeListMap, vrfId)
 }
 
 func DistributeListExit() {
 	for vrfId, _ := range DistributeListMap {
 		ExecLine(fmt.Sprintf("delete vrf name vrf%d distribute-list-ospf distribute-list-vrf%d", vrfId, vrfId))
-		ExecLine(fmt.Sprintf("delete prefix-list distribute-list-vrf%d-primary", vrfId))
-		ExecLine(fmt.Sprintf("delete prefix-list distribute-list-vrf%d-backup", vrfId))
+		ExecLine(fmt.Sprintf("delete prefix-list distribute-list-vrf%d", vrfId))
+		//ExecLine(fmt.Sprintf("delete prefix-list distribute-list-vrf%d-backup", vrfId))
 	}
 	DistributeListMap = map[int]DistributeList{}
 }

@@ -38,7 +38,7 @@ func QuaggaExit() {
 }
 
 func QuaggaDelete(vrfId int) {
-	fmt.Println("[quagga]delete: vrfId, Processes: %+v", vrfId, QuaggaProc[vrfId])
+	fmt.Printf("[quagga]delete: vrfId %+v, Processes: %+v\n", vrfId, QuaggaProc[vrfId])
 	_, ok := QuaggaProc[vrfId]
 	if ok {
 		for _, proc := range QuaggaProc[vrfId] {
@@ -112,4 +112,14 @@ func QuaggaVrfSync(vrfId int, cfg *VrfsConfig) {
 
 func QuaggaVrfDelete(vrfId int) {
 	QuaggaDelete(vrfId)
+}
+
+func NexthopWalkerUpdate() {
+	numProc := len(QuaggaProc) + len(OspfProcessMap)
+	if numProc == 0 {
+		ExecLine(fmt.Sprintf("delete routing-options nexthop-walker"))
+	} else {
+		ExecLine(fmt.Sprintf("set routing-options nexthop-walker"))
+	}
+	Commit()
 }

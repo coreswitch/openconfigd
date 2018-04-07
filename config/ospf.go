@@ -27,7 +27,7 @@ type Ospf struct {
 	Area         uint32                `mapstructure:"area" json:"area,omitempty"`
 	InterfaceIps []InterfaceIp         `mapstructure:"interfaces" json:"interfaces,omitempty"`
 	Interface    string                `mapstructure:"interface" json:"interface,omitempty"` // Deplicated from 2.4
-	PrimaryList  []DistributeListEntry `mapstructure:"primary-distribute-list" json:"primary-distribute-list,omitempty"`
+	PrimaryList  []DistributeListEntry `mapstructure:"distribute-list" json:"distribute-list,omitempty"`
 	BackupList   []DistributeListEntry `mapstructure:"backup-distribute-list" json:"backup-distribute-list,omitempty"`
 }
 
@@ -84,7 +84,6 @@ router ospf
   redistribute bgp metric-type 1
   redistribute connected metric-type 1
   default-information originate metric-type 1
-  distance 220
 {{areaAuthentication .OspfArray}}
 {{range $i, $v := .OspfArray}}  network {{$v.Network}} area {{$v.Area}}
 {{end}}
@@ -200,10 +199,10 @@ func OspfVrfSync(vrfId int, cfg *VrfsConfig) {
 	o := OspfVrfMap[vrfId]
 	n := &cfg.Ospf
 	fmt.Println("XXX old", o, "new", n)
-	if n.Equal(&o) {
-		fmt.Println("XXX old and new is same return")
-		return
-	}
+	// if n.Equal(&o) {
+	// 	fmt.Println("XXX old and new is same return")
+	// 	return
+	// }
 
 	// Stop ospfd if it is running.
 	OspfVrfStop(vrfId)

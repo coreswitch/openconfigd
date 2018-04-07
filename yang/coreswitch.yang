@@ -155,9 +155,6 @@ module coreswitch {
         }
       }
     }
-    leaf nexthop-walker {
-      type empty;
-    }
   }
 
   container dhcp {
@@ -334,8 +331,11 @@ module coreswitch {
         }
       }
     }
+    leaf nexthop-walker {
+      type empty;
+    }
   }
-  
+
   container protocols {
     ext:help "Routing protocol configuration";
     uses quagga:protocols;
@@ -367,6 +367,65 @@ module coreswitch {
       }
       leaf path {
         type string;
+      }
+    }
+  }
+  // ip prefix-list
+  list prefix-list {
+    key "name";
+    leaf name {
+      type string;
+    }
+    // ip prefix-list * description
+    leaf description {
+      description
+        "Prefix-list specific description";
+      type string {
+        length "1..80";
+      }
+    }
+    list seq {
+      // NOTE: the seq element is not actually mandatory
+      // in the Cisco CLI. If it isn't give
+      description
+        "sequence number of an entry";
+      key "number";
+      leaf number {
+        type uint32 {
+          range "1..4294967294";
+        }
+      }
+      leaf action {
+        mandatory;
+        type enumeration {
+          enum permit;
+          enum deny;
+        }
+      }
+      leaf prefix {
+        mandatory;
+        type inet:ipv4-prefix;
+      }
+      leaf ge {
+        description
+          "Minimum prefix length to be matched";
+        type uint8 {
+          range "1..32";
+        }
+      }
+      leaf le {
+        description
+          "Maximum prefix length to be matched";
+        type uint8 {
+          range "1..32";
+        }
+      }
+      leaf eq {
+        description
+          "Maximum prefix length to be matched";
+        type uint8 {
+          range "1..32";
+        }
       }
     }
   }

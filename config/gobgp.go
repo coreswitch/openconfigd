@@ -420,6 +420,7 @@ func GobgpSetVrf(client *client.Client, cfg *GobgpConfig) {
 
 func GobgpSetNeighbor(client *client.Client, cfg *GobgpConfig) {
 	for _, n := range cfg.Neighbors {
+		n.GracefulRestart.Config.RestartTime = 1
 		err := client.AddNeighbor(&n)
 		if err != nil {
 			fmt.Println("GobgpSetNeighbor:", err)
