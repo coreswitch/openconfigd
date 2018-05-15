@@ -302,11 +302,13 @@ func DynamicCompletion(commands []string, module string, args []string) []string
 }
 
 // RPC component.
-type RpcComponent struct{}
+type RpcComponent struct {
+	GrpcEndpoint string
+}
 
 // RPC component start method.
 func (this *RpcComponent) Start() component.Component {
-	lis, err := net.Listen("tcp", ":2650")
+	lis, err := net.Listen("tcp", this.GrpcEndpoint)
 	if err != nil {
 		grpclog.Fatalf("failed %v", err)
 	}

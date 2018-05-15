@@ -19,6 +19,7 @@ import (
 	"os"
 	"text/template"
 
+	"github.com/coreswitch/openconfigd/quagga"
 	"github.com/coreswitch/process"
 )
 
@@ -75,7 +76,7 @@ func (lhs *OspfArray) Equal(rhs *OspfArray) bool {
 }
 
 var ospfTemplate = `!
-password 8 AU67iiPSXYm96
+password 8 {{passwdHash}}
 service password-encryption
 !
 {{range $i, $v := .OspfArray}}{{interfaceIp2Config $v}}{{end}}
@@ -164,6 +165,7 @@ func OspfExec(vrfId int, ospfArray *OspfArray) {
 	tmpl := template.Must(template.New("ospfTmpl").Funcs(template.FuncMap{
 		"areaAuthentication": areaAuthentication,
 		"interfaceIp2Config": interfaceIp2Config,
+		"passwdHash":         quagga.GetHash,
 	}).Parse(ospfTemplate))
 	tmpl.Execute(f, &TemplValue{OspfArray: ospfArray})
 

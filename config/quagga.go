@@ -18,8 +18,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"regexp"
 
 	"github.com/coreswitch/netutil"
+	"github.com/coreswitch/openconfigd/quagga"
 	"github.com/coreswitch/process"
 )
 
@@ -38,7 +40,7 @@ func QuaggaExit() {
 }
 
 func QuaggaDelete(vrfId int) {
-	fmt.Printf("[quagga]delete: vrfId %+v, Processes: %+v\n", vrfId, QuaggaProc[vrfId])
+	fmt.Println("[quagga]delete: vrfId, Processes: %+v", vrfId, QuaggaProc[vrfId])
 	_, ok := QuaggaProc[vrfId]
 	if ok {
 		for _, proc := range QuaggaProc[vrfId] {
@@ -56,6 +58,9 @@ func QuaggaDelete(vrfId int) {
 }
 
 func QuaggaExec(vrfId int, interfaceName string, configStr string) {
+	re := regexp.MustCompile(`password 8 ([0-9A-Za-z]{13})`)
+	configStr = re.ReplaceAllString(configStr, "password 8 "+quagga.GetHash())
+
 	fmt.Println("[quagga]config: vrfId", vrfId, "Interface Name: ", interfaceName, configStr)
 	configFileName := fmt.Sprintf("/etc/quagga/bgpd-vrf%d-%s.conf", vrfId, interfaceName)
 	zapiSocketName := fmt.Sprintf("/var/run/zserv-vrf%d.api", vrfId)
