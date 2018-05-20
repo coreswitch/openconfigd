@@ -15,7 +15,7 @@ import (
 	"github.com/influxdata/influxdb/pkg/limiter"
 	"github.com/influxdata/influxdb/query"
 	"github.com/influxdata/influxql"
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 )
 
 var (
@@ -34,15 +34,18 @@ type Engine interface {
 	Close() error
 	SetEnabled(enabled bool)
 	SetCompactionsEnabled(enabled bool)
+	ScheduleFullCompaction() error
 
-	WithLogger(zap.Logger)
+	WithLogger(*zap.Logger)
 
 	LoadMetadataIndex(shardID uint64, index Index) error
 
 	CreateSnapshot() (string, error)
 	Backup(w io.Writer, basePath string, since time.Time) error
+	Export(w io.Writer, basePath string, start time.Time, end time.Time) error
 	Restore(r io.Reader, basePath string) error
 	Import(r io.Reader, basePath string) error
+	Digest() (io.ReadCloser, int64, error)
 
 	CreateIterator(ctx context.Context, measurement string, opt query.IteratorOptions) (query.Iterator, error)
 	CreateCursor(ctx context.Context, r *CursorRequest) (Cursor, error)
@@ -51,29 +54,23 @@ type Engine interface {
 
 	CreateSeriesIfNotExists(key, name []byte, tags models.Tags) error
 	CreateSeriesListIfNotExists(keys, names [][]byte, tags []models.Tags) error
-	DeleteSeriesRange(keys [][]byte, min, max int64) error
+	DeleteSeriesRange(itr SeriesIterator, min, max int64) error
 
-	SeriesSketches() (estimator.Sketch, estimator.Sketch, error)
 	MeasurementsSketches() (estimator.Sketch, estimator.Sketch, error)
+	SeriesSketches() (estimator.Sketch, estimator.Sketch, error)
 	SeriesN() int64
 
 	MeasurementExists(name []byte) (bool, error)
-	MeasurementNamesByExpr(auth query.Authorizer, expr influxql.Expr) ([][]byte, error)
+
 	MeasurementNamesByRegex(re *regexp.Regexp) ([][]byte, error)
+	MeasurementFieldSet() *MeasurementFieldSet
 	MeasurementFields(measurement []byte) *MeasurementFields
 	ForEachMeasurementName(fn func(name []byte) error) error
 	DeleteMeasurement(name []byte) error
 
 	HasTagKey(name, key []byte) (bool, error)
 	MeasurementTagKeysByExpr(name []byte, expr influxql.Expr) (map[string]struct{}, error)
-	MeasurementTagKeyValuesByExpr(auth query.Authorizer, name []byte, key []string, expr influxql.Expr, keysSorted bool) ([][]string, error)
-	TagKeyHasAuthorizedSeries(auth query.Authorizer, name []byte, key string) bool
-	ForEachMeasurementTagKey(name []byte, fn func(key []byte) error) error
 	TagKeyCardinality(name, key []byte) int
-
-	// InfluxQL iterators
-	MeasurementSeriesKeysByExpr(name []byte, condition influxql.Expr) ([][]byte, error)
-	SeriesPointIterator(opt query.IteratorOptions) (query.Iterator, error)
 
 	// Statistics will return statistics relevant to this engine.
 	Statistics(tags map[string]string) []models.Statistic
@@ -85,6 +82,11 @@ type Engine interface {
 	io.WriterTo
 }
 
+// SeriesIDSets provides access to the total set of series IDs
+type SeriesIDSets interface {
+	ForEach(f func(ids *SeriesIDSet)) error
+}
+
 // EngineFormat represents the format for an engine.
 type EngineFormat int
 
@@ -94,7 +96,7 @@ const (
 )
 
 // NewEngineFunc creates a new engine.
-type NewEngineFunc func(id uint64, i Index, database, path string, walPath string, options EngineOptions) Engine
+type NewEngineFunc func(id uint64, i Index, database, path string, walPath string, sfile *SeriesFile, options EngineOptions) Engine
 
 // newEngineFuncs is a lookup of engine constructors by name.
 var newEngineFuncs = make(map[string]NewEngineFunc)
@@ -119,10 +121,10 @@ func RegisteredEngines() []string {
 
 // NewEngine returns an instance of an engine based on its format.
 // If the path does not exist then the DefaultFormat is used.
-func NewEngine(id uint64, i Index, database, path string, walPath string, options EngineOptions) (Engine, error) {
+func NewEngine(id uint64, i Index, database, path string, walPath string, sfile *SeriesFile, options EngineOptions) (Engine, error) {
 	// Create a new engine
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return newEngineFuncs[options.EngineVersion](id, i, database, path, walPath, options), nil
+		return newEngineFuncs[options.EngineVersion](id, i, database, path, walPath, sfile, options), nil
 	}
 
 	// If it's a dir then it's a tsm1 engine
@@ -141,7 +143,7 @@ func NewEngine(id uint64, i Index, database, path string, walPath string, option
 		return nil, fmt.Errorf("invalid engine format: %q", format)
 	}
 
-	return fn(id, i, database, path, walPath, options), nil
+	return fn(id, i, database, path, walPath, sfile, options), nil
 }
 
 // EngineOptions represents the options used to initialize the engine.
@@ -154,7 +156,8 @@ type EngineOptions struct {
 	CompactionLimiter           limiter.Fixed
 	CompactionThroughputLimiter limiter.Rate
 
-	Config Config
+	Config       Config
+	SeriesIDSets SeriesIDSets
 }
 
 // NewEngineOptions returns the default options.
@@ -167,4 +170,4 @@ func NewEngineOptions() EngineOptions {
 }
 
 // NewInmemIndex returns a new "inmem" index type.
-var NewInmemIndex func(name string) (interface{}, error)
+var NewInmemIndex func(name string, sfile *SeriesFile) (interface{}, error)

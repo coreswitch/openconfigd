@@ -273,7 +273,7 @@ func hostport(addr net.Addr) (string, uint16) {
 		if err != nil {
 			return "", 0
 		}
-		p, _ := strconv.Atoi(port)
+		p, _ := strconv.ParseUint(port, 10, 16)
 		return host, uint16(p)
 	}
 	return "", 0
@@ -676,10 +676,10 @@ func getPathAttrFromBGPUpdate(m *bgp.BGPUpdate, typ bgp.BGPAttrType) bgp.PathAtt
 	return nil
 }
 
-func hasOwnASLoop(ownAS uint32, limit int, aspath *bgp.PathAttributeAsPath) bool {
+func hasOwnASLoop(ownAS uint32, limit int, asPath *bgp.PathAttributeAsPath) bool {
 	cnt := 0
-	for _, i := range aspath.Value {
-		for _, as := range i.(*bgp.As4PathParam).AS {
+	for _, param := range asPath.Value {
+		for _, as := range param.GetAS() {
 			if as == ownAS {
 				cnt++
 				if cnt > limit {
@@ -902,25 +902,7 @@ func (h *FSMHandler) recvMessageWithError() (*FsmMsg, error) {
 					return fmsg, err
 				}
 
-				// RFC4271 9.1.2 Phase 2: Route Selection
-				//
-				// If the AS_PATH attribute of a BGP route contains an AS loop, the BGP
-				// route should be excluded from the Phase 2 decision function.
-				var asLoop bool
-				if attr := getPathAttrFromBGPUpdate(body, bgp.BGP_ATTR_TYPE_AS_PATH); attr != nil {
-					asLoop = hasOwnASLoop(h.fsm.peerInfo.LocalAS, int(h.fsm.pConf.AsPathOptions.Config.AllowOwnAs), attr.(*bgp.PathAttributeAsPath))
-				}
-
 				fmsg.PathList = table.ProcessMessage(m, h.fsm.peerInfo, fmsg.timestamp)
-				id := h.fsm.pConf.State.NeighborAddress
-				for _, path := range fmsg.PathList {
-					if path.IsEOR() {
-						continue
-					}
-					if asLoop || (h.fsm.policy.ApplyPolicy(id, table.POLICY_DIRECTION_IN, path, nil) == nil) {
-						path.Filter(id, table.POLICY_DIRECTION_IN)
-					}
-				}
 				fallthrough
 			case bgp.BGP_MSG_KEEPALIVE:
 				// if the length of h.holdTimerResetCh
@@ -1119,6 +1101,8 @@ func (h *FSMHandler) opensent() (bgp.FSMState, FsmStateReason) {
 						fsm.marshallingOptions = &bgp.MarshallingOption{
 							AddPath: fsm.rfMap,
 						}
+					} else {
+						fsm.marshallingOptions = nil
 					}
 
 					// calculate HoldTime
@@ -1171,6 +1155,21 @@ func (h *FSMHandler) opensent() (bgp.FSMState, FsmStateReason) {
 						// 	// send notification?
 						// 	h.conn.Close()
 						// 	return bgp.BGP_FSM_IDLE, FSM_INVALID_MSG
+						// }
+
+						// RFC 4724 3
+						// The most significant bit is defined as the Restart State (R)
+						// bit, ...(snip)... When set (value 1), this bit
+						// indicates that the BGP speaker has restarted, and its peer MUST
+						// NOT wait for the End-of-RIB marker from the speaker before
+						// advertising routing information to the speaker.
+						// if fsm.pConf.GracefulRestart.State.LocalRestarting && cap.Flags&0x08 != 0 {
+						// 	log.WithFields(log.Fields{
+						// 		"Topic": "Peer",
+						// 		"Key":   fsm.pConf.State.NeighborAddress,
+						// 		"State": fsm.state.String(),
+						// 	}).Debug("peer is restarting, skipping sync process")
+						// 	fsm.pConf.GracefulRestart.State.LocalRestarting = false
 						// }
 						if fsm.pConf.GracefulRestart.Config.NotificationEnabled && cap.Flags&0x04 > 0 {
 							fsm.pConf.GracefulRestart.State.NotificationEnabled = true

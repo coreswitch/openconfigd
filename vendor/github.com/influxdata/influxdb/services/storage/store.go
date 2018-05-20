@@ -10,26 +10,21 @@ import (
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/services/meta"
 	"github.com/influxdata/influxdb/tsdb"
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 )
 
 type Store struct {
-	TSDBStore *tsdb.Store
-
-	MetaClient interface {
-		Database(name string) *meta.DatabaseInfo
-		ShardGroupsByTimeRange(database, policy string, min, max time.Time) (a []meta.ShardGroupInfo, err error)
-	}
-
-	Logger zap.Logger
+	TSDBStore  *tsdb.Store
+	MetaClient StorageMetaClient
+	Logger     *zap.Logger
 }
 
 func NewStore() *Store {
-	return &Store{Logger: zap.New(zap.NullEncoder())}
+	return &Store{Logger: zap.NewNop()}
 }
 
 // WithLogger sets the logger for the service.
-func (s *Store) WithLogger(log zap.Logger) {
+func (s *Store) WithLogger(log *zap.Logger) {
 	s.Logger = log.With(zap.String("service", "store"))
 }
 

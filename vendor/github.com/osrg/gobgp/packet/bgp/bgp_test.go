@@ -63,10 +63,17 @@ func Test_Message(t *testing.T) {
 func Test_IPAddrPrefixString(t *testing.T) {
 	ipv4 := NewIPAddrPrefix(24, "129.6.10.0")
 	assert.Equal(t, "129.6.10.0/24", ipv4.String())
-	ipv6 := NewIPv6AddrPrefix(18, "3343:faba:3903::1")
-	assert.Equal(t, "3343:faba:3903::1/18", ipv6.String())
-	ipv6 = NewIPv6AddrPrefix(18, "3343:faba:3903::0")
-	assert.Equal(t, "3343:faba:3903::/18", ipv6.String())
+	ipv4 = NewIPAddrPrefix(24, "129.6.10.1")
+	assert.Equal(t, "129.6.10.0/24", ipv4.String())
+	ipv4 = NewIPAddrPrefix(22, "129.6.129.0")
+	assert.Equal(t, "129.6.128.0/22", ipv4.String())
+
+	ipv6 := NewIPv6AddrPrefix(64, "3343:faba:3903::0")
+	assert.Equal(t, "3343:faba:3903::/64", ipv6.String())
+	ipv6 = NewIPv6AddrPrefix(64, "3343:faba:3903::1")
+	assert.Equal(t, "3343:faba:3903::/64", ipv6.String())
+	ipv6 = NewIPv6AddrPrefix(63, "3343:faba:3903:129::0")
+	assert.Equal(t, "3343:faba:3903:128::/63", ipv6.String())
 }
 
 func Test_RouteTargetMembershipNLRIString(t *testing.T) {
@@ -258,16 +265,7 @@ func Test_RFC5512(t *testing.T) {
 	assert.Equal(nil, err)
 	assert.Equal([]byte{0x3, 0xc, 0x0, 0x0, 0x0, 0x0, 0x0, 0x8}, buf)
 
-	subTlv := &TunnelEncapSubTLV{
-		Type:  ENCAP_SUBTLV_TYPE_COLOR,
-		Value: &TunnelEncapSubTLVColor{10},
-	}
-
-	tlv := &TunnelEncapTLV{
-		Type:  TUNNEL_TYPE_VXLAN,
-		Value: []*TunnelEncapSubTLV{subTlv},
-	}
-
+	tlv := NewTunnelEncapTLV(TUNNEL_TYPE_VXLAN, []TunnelEncapSubTLVInterface{NewTunnelEncapSubTLVColor(10)})
 	attr := NewPathAttributeTunnelEncap([]*TunnelEncapTLV{tlv})
 
 	buf1, err := attr.Serialize()
@@ -495,7 +493,7 @@ func Test_FlowSpecNlriv6(t *testing.T) {
 func Test_Aigp(t *testing.T) {
 	assert := assert.New(t)
 	m := NewAigpTLVIgpMetric(1000)
-	a1 := NewPathAttributeAigp([]AigpTLV{m})
+	a1 := NewPathAttributeAigp([]AigpTLVInterface{m})
 	buf1, err := a1.Serialize()
 	assert.Nil(err)
 	a2 := NewPathAttributeAigp(nil)
@@ -587,7 +585,7 @@ func Test_EVPNIPPrefixRoute(t *testing.T) {
 		GWIPAddress:    net.IP{10, 10, 10, 10},
 		Label:          1000,
 	}
-	n1 := NewEVPNNLRI(EVPN_IP_PREFIX, 0, r)
+	n1 := NewEVPNNLRI(EVPN_IP_PREFIX, r)
 	buf1, err := n1.Serialize()
 	assert.Nil(err)
 	n2, err := NewPrefixFromRouteFamily(RouteFamilyToAfiSafi(RF_EVPN))
@@ -724,13 +722,13 @@ func Test_AddPath(t *testing.T) {
 	}
 	opt = &MarshallingOption{AddPath: map[RouteFamily]BGPAddPathMode{RF_EVPN: BGP_ADD_PATH_BOTH}}
 	{
-		n1 := NewEVPNNLRI(EVPN_ROUTE_TYPE_ETHERNET_AUTO_DISCOVERY, 0,
+		n1 := NewEVPNNLRI(EVPN_ROUTE_TYPE_ETHERNET_AUTO_DISCOVERY,
 			&EVPNEthernetAutoDiscoveryRoute{NewRouteDistinguisherFourOctetAS(5, 6),
 				EthernetSegmentIdentifier{ESI_ARBITRARY, make([]byte, 9)}, 2, 2})
 		n1.SetPathLocalIdentifier(40)
 		bits, err := n1.Serialize(opt)
 		assert.Nil(err)
-		n2 := NewEVPNNLRI(0, 0, nil)
+		n2 := NewEVPNNLRI(0, nil)
 		err = n2.DecodeFromBytes(bits, opt)
 		assert.Nil(err)
 		assert.Equal(n2.PathIdentifier(), uint32(40))
@@ -796,7 +794,7 @@ func Test_CompareFlowSpecNLRI(t *testing.T) {
 
 func Test_MpReachNLRIWithIPv4MappedIPv6Prefix(t *testing.T) {
 	assert := assert.New(t)
-	n1 := NewIPv6AddrPrefix(120, "::ffff:10.0.0.1")
+	n1 := NewIPv6AddrPrefix(120, "::ffff:10.0.0.0")
 	buf1, err := n1.Serialize()
 	assert.Nil(err)
 	n2, err := NewPrefixFromRouteFamily(RouteFamilyToAfiSafi(RF_IPv6_UC))
@@ -815,7 +813,7 @@ func Test_MpReachNLRIWithIPv4MappedIPv6Prefix(t *testing.T) {
 
 	label := NewMPLSLabelStack(2)
 
-	n3 := NewLabeledIPv6AddrPrefix(120, "::ffff:10.0.0.1", *label)
+	n3 := NewLabeledIPv6AddrPrefix(120, "::ffff:10.0.0.0", *label)
 	buf1, err = n3.Serialize()
 	assert.Nil(err)
 	n4, err := NewPrefixFromRouteFamily(RouteFamilyToAfiSafi(RF_IPv6_MPLS))
@@ -1192,4 +1190,28 @@ func Test_ParseEthernetSegmentIdentifier(t *testing.T) {
 		Type:  ESIType(99),
 		Value: []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99},
 	}, esi)
+}
+
+func TestParseBogusShortData(t *testing.T) {
+	var bodies = []BGPBody{
+		&BGPOpen{},
+		&BGPUpdate{},
+		&BGPNotification{},
+		&BGPKeepAlive{},
+		&BGPRouteRefresh{},
+	}
+
+	for _, b := range bodies {
+		b.DecodeFromBytes([]byte{0})
+	}
+}
+
+func TestFuzzCrashers(t *testing.T) {
+	var crashers = []string{
+		"000000000000000000\x01",
+	}
+
+	for _, f := range crashers {
+		ParseBGPMessage([]byte(f))
+	}
 }

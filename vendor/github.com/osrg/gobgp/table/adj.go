@@ -51,23 +51,12 @@ func (adj *AdjRib) Update(pathList []*Path) {
 		if path.IsWithdraw {
 			if found {
 				delete(adj.table[rf], key)
-				if old.Filtered(adj.id) != POLICY_DIRECTION_IN {
-					adj.accepted[rf]--
-				}
+				adj.accepted[rf]--
 			}
 		} else {
-			n := path.Filtered(adj.id)
 			if found {
-				o := old.Filtered(adj.id)
-				if o == POLICY_DIRECTION_IN && n == POLICY_DIRECTION_NONE {
-					adj.accepted[rf]++
-				} else if o != POLICY_DIRECTION_IN && n == POLICY_DIRECTION_IN {
-					adj.accepted[rf]--
-				}
 			} else {
-				if n == POLICY_DIRECTION_NONE {
-					adj.accepted[rf]++
-				}
+				adj.accepted[rf]++
 			}
 			if found && old.Equal(path) {
 				path.setTimestamp(old.GetTimestamp())
@@ -79,12 +68,7 @@ func (adj *AdjRib) Update(pathList []*Path) {
 
 func (adj *AdjRib) RefreshAcceptedNumber(rfList []bgp.RouteFamily) {
 	for _, rf := range rfList {
-		adj.accepted[rf] = 0
-		for _, p := range adj.table[rf] {
-			if p.Filtered(adj.id) != POLICY_DIRECTION_IN {
-				adj.accepted[rf]++
-			}
-		}
+		adj.accepted[rf] = len(adj.table[rf])
 	}
 }
 
@@ -92,9 +76,6 @@ func (adj *AdjRib) PathList(rfList []bgp.RouteFamily, accepted bool) []*Path {
 	pathList := make([]*Path, 0, adj.Count(rfList))
 	for _, rf := range rfList {
 		for _, rr := range adj.table[rf] {
-			if accepted && rr.Filtered(adj.id) == POLICY_DIRECTION_IN {
-				continue
-			}
 			pathList = append(pathList, rr)
 		}
 	}
@@ -137,9 +118,7 @@ func (adj *AdjRib) DropStale(rfList []bgp.RouteFamily) []*Path {
 			for _, p := range table {
 				if p.IsStale() {
 					delete(table, p.getPrefix())
-					if p.Filtered(adj.id) == POLICY_DIRECTION_NONE {
-						adj.accepted[rf]--
-					}
+					adj.accepted[rf]--
 					pathList = append(pathList, p.Clone(true))
 				}
 			}
@@ -148,14 +127,23 @@ func (adj *AdjRib) DropStale(rfList []bgp.RouteFamily) []*Path {
 	return pathList
 }
 
-func (adj *AdjRib) StaleAll(rfList []bgp.RouteFamily) {
+func (adj *AdjRib) StaleAll(rfList []bgp.RouteFamily) []*Path {
+	pathList := make([]*Path, 0)
 	for _, rf := range rfList {
 		if table, ok := adj.table[rf]; ok {
-			for _, p := range table {
-				p.MarkStale(true)
+			l := make([]*Path, 0, len(table))
+			for k, p := range table {
+				n := p.Clone(false)
+				n.MarkStale(true)
+				table[k] = n
+				l = append(l, n)
+			}
+			if len(l) > 0 {
+				pathList = append(pathList, l...)
 			}
 		}
 	}
+	return pathList
 }
 
 func (adj *AdjRib) Exists(path *Path) bool {
@@ -172,21 +160,21 @@ func (adj *AdjRib) Exists(path *Path) bool {
 }
 
 func (adj *AdjRib) Select(family bgp.RouteFamily, accepted bool, option ...TableSelectOption) (*Table, error) {
-	paths := adj.PathList([]bgp.RouteFamily{family}, accepted)
-	dsts := make(map[string]*Destination, len(paths))
-	for _, path := range paths {
-		if d, y := dsts[path.GetNlri().String()]; y {
-			d.knownPathList = append(d.knownPathList, path)
+	m := make(map[string][]*Path)
+	pl := adj.PathList([]bgp.RouteFamily{family}, accepted)
+	for _, path := range pl {
+		key := path.GetNlri().String()
+		if _, y := m[key]; y {
+			m[key] = append(m[key], path)
 		} else {
-			dst := NewDestination(path.GetNlri(), 0)
-			dsts[path.GetNlri().String()] = dst
-			dst.knownPathList = append(dst.knownPathList, path)
+			m[key] = []*Path{path}
 		}
 	}
-	tbl := &Table{
-		routeFamily:  family,
-		destinations: dsts,
+	d := make([]*Destination, 0, len(pl))
+	for _, l := range m {
+		d = append(d, NewDestination(l[0].GetNlri(), 0, l...))
 	}
+	tbl := NewTable(family, d...)
 	option = append(option, TableSelectOption{adj: true})
 	return tbl.Select(option...)
 }

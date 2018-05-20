@@ -35,7 +35,8 @@ import (
 )
 
 type PolicyOptions struct {
-	Info *PeerInfo
+	Info             *PeerInfo
+	ValidationResult *Validation
 }
 
 type DefinedType int
@@ -337,8 +338,8 @@ func NewPrefix(c config.Prefix) (*Prefix, error) {
 			return nil, fmt.Errorf("mask length range format is invalid")
 		}
 		// we've already checked the range is sane by regexp
-		min, _ := strconv.Atoi(elems[1])
-		max, _ := strconv.Atoi(elems[2])
+		min, _ := strconv.ParseUint(elems[1], 10, 8)
+		max, _ := strconv.ParseUint(elems[2], 10, 8)
 		p.MasklengthRangeMin = uint8(min)
 		p.MasklengthRangeMax = uint8(max)
 	}
@@ -716,25 +717,25 @@ func NewSingleAsPathMatch(arg string) *singleAsPathMatch {
 	onlyRe := regexp.MustCompile("^\\^([0-9]+)\\$$")
 	switch {
 	case leftMostRe.MatchString(arg):
-		asn, _ := strconv.Atoi(leftMostRe.FindStringSubmatch(arg)[1])
+		asn, _ := strconv.ParseUint(leftMostRe.FindStringSubmatch(arg)[1], 10, 32)
 		return &singleAsPathMatch{
 			asn:  uint32(asn),
 			mode: LEFT_MOST,
 		}
 	case originRe.MatchString(arg):
-		asn, _ := strconv.Atoi(originRe.FindStringSubmatch(arg)[1])
+		asn, _ := strconv.ParseUint(originRe.FindStringSubmatch(arg)[1], 10, 32)
 		return &singleAsPathMatch{
 			asn:  uint32(asn),
 			mode: ORIGIN,
 		}
 	case includeRe.MatchString(arg):
-		asn, _ := strconv.Atoi(includeRe.FindStringSubmatch(arg)[1])
+		asn, _ := strconv.ParseUint(includeRe.FindStringSubmatch(arg)[1], 10, 32)
 		return &singleAsPathMatch{
 			asn:  uint32(asn),
 			mode: INCLUDE,
 		}
 	case onlyRe.MatchString(arg):
-		asn, _ := strconv.Atoi(onlyRe.FindStringSubmatch(arg)[1])
+		asn, _ := strconv.ParseUint(onlyRe.FindStringSubmatch(arg)[1], 10, 32)
 		return &singleAsPathMatch{
 			asn:  uint32(asn),
 			mode: ONLY,
@@ -985,8 +986,8 @@ func ParseCommunity(arg string) (uint32, error) {
 	exp := regexp.MustCompile("(\\d+):(\\d+)")
 	elems := exp.FindStringSubmatch(arg)
 	if len(elems) == 3 {
-		fst, _ := strconv.Atoi(elems[1])
-		snd, _ := strconv.Atoi(elems[2])
+		fst, _ := strconv.ParseUint(elems[1], 10, 16)
+		snd, _ := strconv.ParseUint(elems[2], 10, 16)
 		return uint32(fst<<16 | snd), nil
 	}
 	for i, v := range bgp.WellKnownCommunityNameMap {
@@ -1729,8 +1730,11 @@ func (c *RpkiValidationCondition) Type() ConditionType {
 	return CONDITION_RPKI
 }
 
-func (c *RpkiValidationCondition) Evaluate(path *Path, _ *PolicyOptions) bool {
-	return c.result == path.ValidationStatus()
+func (c *RpkiValidationCondition) Evaluate(path *Path, options *PolicyOptions) bool {
+	if options != nil && options.ValidationResult != nil {
+		return c.result == options.ValidationResult.Status
+	}
+	return false
 }
 
 func (c *RpkiValidationCondition) Set() DefinedSet {
@@ -2880,9 +2884,7 @@ func (r *RoutingPolicy) ApplyPolicy(id string, dir PolicyDirection, before *Path
 	if before == nil {
 		return nil
 	}
-	if filtered := before.Filtered(id); filtered > POLICY_DIRECTION_NONE && filtered < dir {
-		return nil
-	}
+
 	if before.IsWithdraw {
 		return before
 	}

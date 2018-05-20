@@ -8,12 +8,14 @@ import (
 	"github.com/influxdata/influxdb/query"
 	"github.com/influxdata/influxdb/tsdb"
 	"github.com/influxdata/influxql"
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 )
 
 // TSDBStoreMock is a mockable implementation of tsdb.Store.
 type TSDBStoreMock struct {
 	BackupShardFn             func(id uint64, since time.Time, w io.Writer) error
+	BackupSeriesFileFn        func(database string, w io.Writer) error
+	ExportShardFn             func(id uint64, ExportStart time.Time, ExportEnd time.Time, w io.Writer) error
 	CloseFn                   func() error
 	CreateShardFn             func(database, policy string, shardID uint64, enabled bool) error
 	CreateShardSnapshotFn     func(id uint64) (string, error)
@@ -43,12 +45,18 @@ type TSDBStoreMock struct {
 	StatisticsFn              func(tags map[string]string) []models.Statistic
 	TagKeysFn                 func(auth query.Authorizer, shardIDs []uint64, cond influxql.Expr) ([]tsdb.TagKeys, error)
 	TagValuesFn               func(auth query.Authorizer, shardIDs []uint64, cond influxql.Expr) ([]tsdb.TagValues, error)
-	WithLoggerFn              func(log zap.Logger)
+	WithLoggerFn              func(log *zap.Logger)
 	WriteToShardFn            func(shardID uint64, points []models.Point) error
 }
 
 func (s *TSDBStoreMock) BackupShard(id uint64, since time.Time, w io.Writer) error {
 	return s.BackupShardFn(id, since, w)
+}
+func (s *TSDBStoreMock) BackupSeriesFile(database string, w io.Writer) error {
+	return s.BackupSeriesFileFn(database, w)
+}
+func (s *TSDBStoreMock) ExportShard(id uint64, ExportStart time.Time, ExportEnd time.Time, w io.Writer) error {
+	return s.ExportShardFn(id, ExportStart, ExportEnd, w)
 }
 func (s *TSDBStoreMock) Close() error { return s.CloseFn() }
 func (s *TSDBStoreMock) CreateShard(database string, retentionPolicy string, shardID uint64, enabled bool) error {
@@ -135,7 +143,7 @@ func (s *TSDBStoreMock) TagKeys(auth query.Authorizer, shardIDs []uint64, cond i
 func (s *TSDBStoreMock) TagValues(auth query.Authorizer, shardIDs []uint64, cond influxql.Expr) ([]tsdb.TagValues, error) {
 	return s.TagValuesFn(auth, shardIDs, cond)
 }
-func (s *TSDBStoreMock) WithLogger(log zap.Logger) {
+func (s *TSDBStoreMock) WithLogger(log *zap.Logger) {
 	s.WithLoggerFn(log)
 }
 func (s *TSDBStoreMock) WriteToShard(shardID uint64, points []models.Point) error {

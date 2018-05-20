@@ -195,12 +195,15 @@ func (c *compiledStatement) compileFields(stmt *influxql.SelectStatement) error 
 
 		// Append this field to the list of processed fields and compile it.
 		field := &compiledField{
-			global:        c,
-			Field:         f,
+			global: c,
+			Field: &influxql.Field{
+				Expr:  influxql.Reduce(f.Expr, nil),
+				Alias: f.Alias,
+			},
 			AllowWildcard: true,
 		}
 		c.Fields = append(c.Fields, field)
-		if err := field.compileExpr(f.Expr); err != nil {
+		if err := field.compileExpr(field.Field.Expr); err != nil {
 			return err
 		}
 	}
@@ -656,7 +659,10 @@ func (c *compiledField) compileTopBottom(call *influxql.Call) error {
 
 func (c *compiledStatement) compileDimensions(stmt *influxql.SelectStatement) error {
 	for _, d := range stmt.Dimensions {
-		switch expr := d.Expr.(type) {
+		// Reduce the expression before attempting anything. Do not evaluate the call.
+		expr := influxql.Reduce(d.Expr, nil)
+
+		switch expr := expr.(type) {
 		case *influxql.VarRef:
 			if strings.ToLower(expr.Val) == "time" {
 				return errors.New("time() is a function and expects at least one argument")
@@ -688,6 +694,11 @@ func (c *compiledStatement) compileDimensions(stmt *influxql.SelectStatement) er
 						}
 						now := c.Options.Now
 						c.Interval.Offset = now.Sub(now.Truncate(c.Interval.Duration))
+
+						// Use the evaluated offset to replace the argument. Ideally, we would
+						// use the interval assigned above, but the query engine hasn't been changed
+						// to use the compiler information yet.
+						expr.Args[1] = &influxql.DurationLiteral{Val: c.Interval.Offset}
 					case *influxql.StringLiteral:
 						// If literal looks like a date time then parse it as a time literal.
 						if lit.IsTimeLiteral() {
@@ -709,6 +720,9 @@ func (c *compiledStatement) compileDimensions(stmt *influxql.SelectStatement) er
 		default:
 			return errors.New("only time and tag dimensions allowed")
 		}
+
+		// Assign the reduced/changed expression to the dimension.
+		d.Expr = expr
 	}
 	return nil
 }
@@ -875,5 +889,6 @@ func (c *compiledStatement) Prepare(shardMapper ShardMapper, sopt SelectOptions)
 		opt:     opt,
 		ic:      shards,
 		columns: columns,
+		now:     c.Options.Now,
 	}, nil
 }

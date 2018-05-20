@@ -354,7 +354,7 @@ type AddPathByStreamClient struct {
 func (c *AddPathByStreamClient) Send(paths ...*table.Path) error {
 	ps := make([]*api.Path, 0, len(paths))
 	for _, p := range paths {
-		ps = append(ps, api.ToPathApi(p))
+		ps = append(ps, api.ToPathApi(p, nil))
 	}
 	return c.stream.Send(&api.InjectMrtRequest{
 		Resource: api.Resource_GLOBAL,
@@ -385,7 +385,7 @@ func (cli *Client) addPath(vrfID string, pathList []*table.Path) ([]byte, error)
 		r, err := cli.cli.AddPath(context.Background(), &api.AddPathRequest{
 			Resource: resource,
 			VrfId:    vrfID,
-			Path:     api.ToPathApi(path),
+			Path:     api.ToPathApi(path, nil),
 		})
 		if err != nil {
 			return nil, err
@@ -718,8 +718,6 @@ func (cli *Client) ReplacePolicy(t *table.Policy, refer, preserve bool) error {
 func (cli *Client) getPolicyAssignment(name string, dir table.PolicyDirection) (*table.PolicyAssignment, error) {
 	var typ api.PolicyType
 	switch dir {
-	case table.POLICY_DIRECTION_IN:
-		typ = api.PolicyType_IN
 	case table.POLICY_DIRECTION_IMPORT:
 		typ = api.PolicyType_IMPORT
 	case table.POLICY_DIRECTION_EXPORT:
@@ -770,10 +768,6 @@ func (cli *Client) GetExportPolicy() (*table.PolicyAssignment, error) {
 	return cli.getPolicyAssignment("", table.POLICY_DIRECTION_EXPORT)
 }
 
-func (cli *Client) GetRouteServerInPolicy(name string) (*table.PolicyAssignment, error) {
-	return cli.getPolicyAssignment(name, table.POLICY_DIRECTION_IN)
-}
-
 func (cli *Client) GetRouteServerImportPolicy(name string) (*table.PolicyAssignment, error) {
 	return cli.getPolicyAssignment(name, table.POLICY_DIRECTION_IMPORT)
 }
@@ -818,7 +812,9 @@ func (cli *Client) GetRPKI() ([]*config.RpkiServer, error) {
 	}
 	servers := make([]*config.RpkiServer, 0, len(rsp.Servers))
 	for _, s := range rsp.Servers {
-		port, err := strconv.Atoi(s.Conf.RemotePort)
+		// Note: RpkiServerConfig.Port is uint32 type, but the TCP/UDP port is
+		// 16-bit length.
+		port, err := strconv.ParseUint(s.Conf.RemotePort, 10, 16)
 		if err != nil {
 			return nil, err
 		}
@@ -993,16 +989,10 @@ func (c *MonitorNeighborStateClient) Recv() (*config.Neighbor, error) {
 	return api.NewNeighborFromAPIStruct(p)
 }
 
-func (cli *Client) MonitorNeighborState(names ...string) (*MonitorNeighborStateClient, error) {
-	if len(names) > 1 {
-		return nil, fmt.Errorf("support one name at most: %d", len(names))
-	}
-	name := ""
-	if len(names) > 0 {
-		name = names[0]
-	}
+func (cli *Client) MonitorNeighborState(name string, current bool) (*MonitorNeighborStateClient, error) {
 	stream, err := cli.cli.MonitorPeerState(context.Background(), &api.Arguments{
-		Name: name,
+		Name:    name,
+		Current: current,
 	})
 	if err != nil {
 		return nil, err
