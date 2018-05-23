@@ -408,7 +408,7 @@ func NewValidationFromTableStruct(v *table.Validation) *RPKIValidation {
 	}
 }
 
-func ToPathApi(path *table.Path) *Path {
+func ToPathApi(path *table.Path, v *table.Validation) *Path {
 	nlri := path.GetNlri()
 	n, _ := nlri.Serialize()
 	family := uint32(bgp.AfiSafiToRouteFamily(nlri.AFI(), nlri.SAFI()))
@@ -420,19 +420,22 @@ func ToPathApi(path *table.Path) *Path {
 		}
 		return ret
 	}(path.GetPathAttrs())
+	vv := config.RPKI_VALIDATION_RESULT_TYPE_NONE.ToInt()
+	if v != nil {
+		vv = v.Status.ToInt()
+	}
+
 	p := &Path{
 		Nlri:               n,
 		Pattrs:             pattrs,
 		Age:                path.GetTimestamp().Unix(),
 		IsWithdraw:         path.IsWithdraw,
-		Validation:         int32(path.ValidationStatus().ToInt()),
-		ValidationDetail:   NewValidationFromTableStruct(path.Validation()),
-		Filtered:           path.Filtered("") == table.POLICY_DIRECTION_IN,
+		Validation:         int32(vv),
+		ValidationDetail:   NewValidationFromTableStruct(v),
 		Family:             family,
 		Stale:              path.IsStale(),
 		IsFromExternal:     path.IsFromExternal(),
 		NoImplicitWithdraw: path.NoImplicitWithdraw(),
-		Uuid:               path.UUID().Bytes(),
 		IsNexthopInvalid:   path.IsNexthopInvalid,
 		Identifier:         nlri.PathIdentifier(),
 		LocalIdentifier:    nlri.PathLocalIdentifier(),
@@ -443,6 +446,14 @@ func ToPathApi(path *table.Path) *Path {
 		p.NeighborIp = s.Address.String()
 	}
 	return p
+}
+
+func getValidation(v []*table.Validation, i int) *table.Validation {
+	if v == nil {
+		return nil
+	} else {
+		return v[i]
+	}
 }
 
 func (s *Server) GetRib(ctx context.Context, arg *GetRibRequest) (*GetRibResponse, error) {
@@ -470,16 +481,17 @@ func (s *Server) GetRib(ctx context.Context, arg *GetRibRequest) (*GetRibRespons
 	var in bool
 	var err error
 	var tbl *table.Table
+	var v []*table.Validation
 
 	family := bgp.RouteFamily(arg.Table.Family)
 	switch arg.Table.Type {
 	case Resource_LOCAL, Resource_GLOBAL:
-		tbl, err = s.bgpServer.GetRib(arg.Table.Name, family, f())
+		tbl, v, err = s.bgpServer.GetRib(arg.Table.Name, family, f())
 	case Resource_ADJ_IN:
 		in = true
 		fallthrough
 	case Resource_ADJ_OUT:
-		tbl, err = s.bgpServer.GetAdjRib(arg.Table.Name, family, in, f())
+		tbl, v, err = s.bgpServer.GetAdjRib(arg.Table.Name, family, in, f())
 	case Resource_VRF:
 		tbl, err = s.bgpServer.GetVrfRib(arg.Table.Name, family, []*table.LookupPrefix{})
 	default:
@@ -492,16 +504,18 @@ func (s *Server) GetRib(ctx context.Context, arg *GetRibRequest) (*GetRibRespons
 
 	tblDsts := tbl.GetDestinations()
 	dsts := make([]*Destination, 0, len(tblDsts))
+	idx := 0
 	for _, dst := range tblDsts {
 		dsts = append(dsts, &Destination{
 			Prefix: dst.GetNlri().String(),
 			Paths: func(paths []*table.Path) []*Path {
 				l := make([]*Path, 0, len(paths))
 				for i, p := range paths {
-					pp := ToPathApi(p)
+					pp := ToPathApi(p, getValidation(v, idx))
+					idx++
 					switch arg.Table.Type {
 					case Resource_LOCAL, Resource_GLOBAL:
-						if i == 0 {
+						if i == 0 && !table.SelectionOptions.DisableBestPathSelection {
 							pp.Best = true
 						}
 					}
@@ -535,14 +549,15 @@ func (s *Server) GetPath(arg *GetPathRequest, stream GobgpApi_GetPathServer) err
 	family := bgp.RouteFamily(arg.Family)
 	var tbl *table.Table
 	var err error
+	var v []*table.Validation
 	switch arg.Type {
 	case Resource_LOCAL, Resource_GLOBAL:
-		tbl, err = s.bgpServer.GetRib(arg.Name, family, f())
+		tbl, v, err = s.bgpServer.GetRib(arg.Name, family, f())
 	case Resource_ADJ_IN:
 		in = true
 		fallthrough
 	case Resource_ADJ_OUT:
-		tbl, err = s.bgpServer.GetAdjRib(arg.Name, family, in, f())
+		tbl, v, err = s.bgpServer.GetAdjRib(arg.Name, family, in, f())
 	case Resource_VRF:
 		tbl, err = s.bgpServer.GetVrfRib(arg.Name, family, []*table.LookupPrefix{})
 	default:
@@ -552,11 +567,13 @@ func (s *Server) GetPath(arg *GetPathRequest, stream GobgpApi_GetPathServer) err
 		return err
 	}
 
+	idx := 0
 	return func() error {
 		for _, dst := range tbl.GetDestinations() {
-			for idx, path := range dst.GetAllKnownPathList() {
-				p := ToPathApi(path)
-				if idx == 0 {
+			for i, path := range dst.GetAllKnownPathList() {
+				p := ToPathApi(path, getValidation(v, idx))
+				idx++
+				if i == 0 && !table.SelectionOptions.DisableBestPathSelection {
 					switch arg.Type {
 					case Resource_LOCAL, Resource_GLOBAL:
 						p.Best = true
@@ -603,11 +620,11 @@ func (s *Server) MonitorRib(arg *MonitorRibRequest, stream GobgpApi_MonitorRibSe
 					continue
 				}
 				if dst, y := dsts[path.GetNlri().String()]; y {
-					dst.Paths = append(dst.Paths, ToPathApi(path))
+					dst.Paths = append(dst.Paths, ToPathApi(path, nil))
 				} else {
 					dsts[path.GetNlri().String()] = &Destination{
 						Prefix: path.GetNlri().String(),
-						Paths:  []*Path{ToPathApi(path)},
+						Paths:  []*Path{ToPathApi(path, nil)},
 					}
 				}
 			}
@@ -651,7 +668,7 @@ func (s *Server) MonitorPeerState(arg *Arguments, stream GobgpApi_MonitorPeerSta
 		return fmt.Errorf("invalid request")
 	}
 	return func() error {
-		w := s.bgpServer.Watch(server.WatchPeerState(false))
+		w := s.bgpServer.Watch(server.WatchPeerState(arg.Current))
 		defer func() { w.Stop() }()
 
 		for {
@@ -904,7 +921,7 @@ func (s *Server) DeleteBmp(ctx context.Context, arg *DeleteBmpRequest) (*DeleteB
 }
 
 func (s *Server) ValidateRib(ctx context.Context, arg *ValidateRibRequest) (*ValidateRibResponse, error) {
-	return &ValidateRibResponse{}, s.bgpServer.ValidateRib(arg.Prefix)
+	return &ValidateRibResponse{}, nil
 }
 
 func (s *Server) AddRpki(ctx context.Context, arg *AddRpkiRequest) (*AddRpkiResponse, error) {
@@ -1554,8 +1571,8 @@ func (s *Server) GetDefinedSet(ctx context.Context, arg *GetDefinedSetRequest) (
 				for _, p := range cs.PrefixList {
 					exp := regexp.MustCompile("(\\d+)\\.\\.(\\d+)")
 					elems := exp.FindStringSubmatch(p.MasklengthRange)
-					min, _ := strconv.Atoi(elems[1])
-					max, _ := strconv.Atoi(elems[2])
+					min, _ := strconv.ParseUint(elems[1], 10, 32)
+					max, _ := strconv.ParseUint(elems[2], 10, 32)
 
 					l = append(l, &Prefix{IpPrefix: p.IpPrefix, MaskLengthMin: uint32(min), MaskLengthMax: uint32(max)})
 				}
@@ -1729,12 +1746,12 @@ func toStatementApi(s *config.Statement) *Statement {
 			case "+", "-":
 				action = MedActionType_MED_MOD
 			}
-			value, err := strconv.Atoi(matches[1] + matches[2])
+			value, err := strconv.ParseInt(matches[1]+matches[2], 10, 64)
 			if err != nil {
 				return nil
 			}
 			return &MedAction{
-				Value: int64(value),
+				Value: value,
 				Type:  action,
 			}
 		}(),
@@ -1742,10 +1759,10 @@ func toStatementApi(s *config.Statement) *Statement {
 			if len(s.Actions.BgpActions.SetAsPathPrepend.As) == 0 {
 				return nil
 			}
-			asn := 0
+			var asn uint64
 			useleft := false
 			if s.Actions.BgpActions.SetAsPathPrepend.As != "last-as" {
-				asn, _ = strconv.Atoi(s.Actions.BgpActions.SetAsPathPrepend.As)
+				asn, _ = strconv.ParseUint(s.Actions.BgpActions.SetAsPathPrepend.As, 10, 32)
 			} else {
 				useleft = true
 			}
@@ -2197,8 +2214,6 @@ func NewAPIPolicyAssignmentFromTableStruct(t *table.PolicyAssignment) *PolicyAss
 	return &PolicyAssignment{
 		Type: func() PolicyType {
 			switch t.Type {
-			case table.POLICY_DIRECTION_IN:
-				return PolicyType_IN
 			case table.POLICY_DIRECTION_IMPORT:
 				return PolicyType_IMPORT
 			case table.POLICY_DIRECTION_EXPORT:
@@ -2326,8 +2341,6 @@ func toPolicyAssignmentName(a *PolicyAssignment) (string, table.PolicyDirection,
 		}
 	case Resource_LOCAL:
 		switch a.Type {
-		case PolicyType_IN:
-			return a.Name, table.POLICY_DIRECTION_IN, nil
 		case PolicyType_IMPORT:
 			return a.Name, table.POLICY_DIRECTION_IMPORT, nil
 		case PolicyType_EXPORT:

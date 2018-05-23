@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/influxdata/influxdb/logger"
 	"github.com/influxdata/influxdb/query"
 	"github.com/influxdata/influxql"
-	"github.com/uber-go/zap"
 )
 
 func BenchmarkIntegerIterator_Next(b *testing.B) {
@@ -71,7 +71,7 @@ func TestFinalizerIterator(t *testing.T) {
 		step3 = make(chan struct{})
 	)
 
-	l := zap.New(zap.NewTextEncoder(), zap.Output(os.Stderr))
+	l := logger.New(os.Stderr)
 	done := make(chan struct{})
 	func() {
 		itr := &testFinalizerIterator{
@@ -145,4 +145,17 @@ func TestFinalizerIterator(t *testing.T) {
 	case <-step3:
 		timer.Stop()
 	}
+}
+
+func TestBufCursor_DoubleClose(t *testing.T) {
+	c := newBufCursor(nilCursor{}, true)
+	if err := c.close(); err != nil {
+		t.Fatalf("error closing: %v", err)
+	}
+
+	// This shouldn't panic
+	if err := c.close(); err != nil {
+		t.Fatalf("error closing: %v", err)
+	}
+
 }

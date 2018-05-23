@@ -2,12 +2,15 @@ package config
 
 import (
 	"fmt"
+	"math"
+	"net"
+	"reflect"
+
+	"github.com/spf13/viper"
+
 	"github.com/osrg/gobgp/packet/bgp"
 	"github.com/osrg/gobgp/packet/bmp"
 	"github.com/osrg/gobgp/packet/rtr"
-	"github.com/spf13/viper"
-	"net"
-	"reflect"
 )
 
 const (
@@ -235,6 +238,14 @@ func setDefaultNeighborConfigValuesWithViper(v *viper.Viper, n *Neighbor, g *Glo
 		}
 	}
 
+	if n.RouteReflector.Config.RouteReflectorClient {
+		if n.RouteReflector.Config.RouteReflectorClusterId == "" {
+			n.RouteReflector.Config.RouteReflectorClusterId = RrClusterIdType(g.Config.RouterId)
+		} else if id := net.ParseIP(string(n.RouteReflector.Config.RouteReflectorClusterId)).To4(); id == nil {
+			return fmt.Errorf("route-reflector-cluster-id should be specified in IPv4 address format")
+		}
+	}
+
 	return nil
 }
 
@@ -253,6 +264,43 @@ func SetDefaultGlobalConfigValues(g *Global) error {
 	if len(g.Config.LocalAddressList) == 0 {
 		g.Config.LocalAddressList = []string{"0.0.0.0", "::"}
 	}
+	return nil
+}
+
+func setDefaultVrfConfigValues(v *Vrf) error {
+	if v == nil {
+		return fmt.Errorf("cannot set default values for nil vrf config")
+	}
+
+	if v.Config.Name == "" {
+		return fmt.Errorf("specify vrf name")
+	}
+
+	_, err := bgp.ParseRouteDistinguisher(v.Config.Rd)
+	if err != nil {
+		return fmt.Errorf("invalid rd for vrf %s: %s", v.Config.Name, v.Config.Rd)
+	}
+
+	if len(v.Config.ImportRtList) == 0 {
+		v.Config.ImportRtList = v.Config.BothRtList
+	}
+	for _, rtString := range v.Config.ImportRtList {
+		_, err := bgp.ParseRouteTarget(rtString)
+		if err != nil {
+			return fmt.Errorf("invalid import rt for vrf %s: %s", v.Config.Name, rtString)
+		}
+	}
+
+	if len(v.Config.ExportRtList) == 0 {
+		v.Config.ExportRtList = v.Config.BothRtList
+	}
+	for _, rtString := range v.Config.ExportRtList {
+		_, err := bgp.ParseRouteTarget(rtString)
+		if err != nil {
+			return fmt.Errorf("invalid export rt for vrf %s: %s", v.Config.Name, rtString)
+		}
+	}
+
 	return nil
 }
 
@@ -298,6 +346,41 @@ func setDefaultConfigValuesWithViper(v *viper.Viper, b *BgpConfigSet) error {
 			return fmt.Errorf("too small statistics-timeout value: %d", server.Config.StatisticsTimeout)
 		}
 		b.BmpServers[idx] = server
+	}
+
+	vrfNames := make(map[string]struct{})
+	vrfIDs := make(map[uint32]struct{})
+	for idx, vrf := range b.Vrfs {
+		if err := setDefaultVrfConfigValues(&vrf); err != nil {
+			return err
+		}
+
+		if _, ok := vrfNames[vrf.Config.Name]; ok {
+			return fmt.Errorf("duplicated vrf name: %s", vrf.Config.Name)
+		}
+		vrfNames[vrf.Config.Name] = struct{}{}
+
+		if vrf.Config.Id != 0 {
+			if _, ok := vrfIDs[vrf.Config.Id]; ok {
+				return fmt.Errorf("duplicated vrf id: %d", vrf.Config.Id)
+			}
+			vrfIDs[vrf.Config.Id] = struct{}{}
+		}
+
+		b.Vrfs[idx] = vrf
+	}
+	// Auto assign VRF identifier
+	for idx, vrf := range b.Vrfs {
+		if vrf.Config.Id == 0 {
+			for id := uint32(1); id < math.MaxUint32; id++ {
+				if _, ok := vrfIDs[id]; !ok {
+					vrf.Config.Id = id
+					vrfIDs[id] = struct{}{}
+					break
+				}
+			}
+		}
+		b.Vrfs[idx] = vrf
 	}
 
 	if b.Zebra.Config.Url == "" {

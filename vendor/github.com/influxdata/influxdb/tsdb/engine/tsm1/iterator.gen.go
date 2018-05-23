@@ -18,7 +18,7 @@ import (
 	"github.com/influxdata/influxdb/query"
 	"github.com/influxdata/influxdb/tsdb"
 	"github.com/influxdata/influxql"
-	"github.com/uber-go/zap"
+	"go.uber.org/zap"
 )
 
 type cursor interface {
@@ -37,6 +37,7 @@ type cursorAt interface {
 type nilCursor struct{}
 
 func (nilCursor) next() (int64, interface{}) { return tsdb.EOF, nil }
+func (nilCursor) close() error               { return nil }
 
 // bufCursor implements a bufferred cursor.
 type bufCursor struct {
@@ -55,6 +56,10 @@ func newBufCursor(cur cursor, ascending bool) *bufCursor {
 }
 
 func (c *bufCursor) close() error {
+	if c.cur == nil {
+		return nil
+	}
+
 	err := c.cur.close()
 	c.cur = nil
 	return err
@@ -125,10 +130,10 @@ const statsBufferCopyIntervalN = 100
 
 type floatFinalizerIterator struct {
 	query.FloatIterator
-	logger zap.Logger
+	logger *zap.Logger
 }
 
-func newFloatFinalizerIterator(inner query.FloatIterator, logger zap.Logger) *floatFinalizerIterator {
+func newFloatFinalizerIterator(inner query.FloatIterator, logger *zap.Logger) *floatFinalizerIterator {
 	itr := &floatFinalizerIterator{FloatIterator: inner, logger: logger}
 	runtime.SetFinalizer(itr, (*floatFinalizerIterator).closeGC)
 	return itr
@@ -411,6 +416,10 @@ func (c *floatAscendingCursor) peekTSM() (t int64, v float64) {
 
 // close closes the cursor and any dependent cursors.
 func (c *floatAscendingCursor) close() error {
+	if c.tsm.keyCursor == nil {
+		return nil
+	}
+
 	c.tsm.keyCursor.Close()
 	c.tsm.keyCursor = nil
 	c.cache.values = nil
@@ -528,6 +537,10 @@ func (c *floatDescendingCursor) peekTSM() (t int64, v float64) {
 
 // close closes the cursor and any dependent cursors.
 func (c *floatDescendingCursor) close() error {
+	if c.tsm.keyCursor == nil {
+		return nil
+	}
+
 	c.tsm.keyCursor.Close()
 	c.tsm.keyCursor = nil
 	c.cache.values = nil
@@ -589,10 +602,10 @@ func (c *floatDescendingCursor) nextTSM() {
 
 type integerFinalizerIterator struct {
 	query.IntegerIterator
-	logger zap.Logger
+	logger *zap.Logger
 }
 
-func newIntegerFinalizerIterator(inner query.IntegerIterator, logger zap.Logger) *integerFinalizerIterator {
+func newIntegerFinalizerIterator(inner query.IntegerIterator, logger *zap.Logger) *integerFinalizerIterator {
 	itr := &integerFinalizerIterator{IntegerIterator: inner, logger: logger}
 	runtime.SetFinalizer(itr, (*integerFinalizerIterator).closeGC)
 	return itr
@@ -875,6 +888,10 @@ func (c *integerAscendingCursor) peekTSM() (t int64, v int64) {
 
 // close closes the cursor and any dependent cursors.
 func (c *integerAscendingCursor) close() error {
+	if c.tsm.keyCursor == nil {
+		return nil
+	}
+
 	c.tsm.keyCursor.Close()
 	c.tsm.keyCursor = nil
 	c.cache.values = nil
@@ -992,6 +1009,10 @@ func (c *integerDescendingCursor) peekTSM() (t int64, v int64) {
 
 // close closes the cursor and any dependent cursors.
 func (c *integerDescendingCursor) close() error {
+	if c.tsm.keyCursor == nil {
+		return nil
+	}
+
 	c.tsm.keyCursor.Close()
 	c.tsm.keyCursor = nil
 	c.cache.values = nil
@@ -1053,19 +1074,20 @@ func (c *integerDescendingCursor) nextTSM() {
 
 type unsignedFinalizerIterator struct {
 	query.UnsignedIterator
-	logger zap.Logger
+	logger *zap.Logger
 }
 
-func newUnsignedFinalizerIterator(inner query.UnsignedIterator, logger zap.Logger) *unsignedFinalizerIterator {
+func newUnsignedFinalizerIterator(inner query.UnsignedIterator, logger *zap.Logger) *unsignedFinalizerIterator {
 	itr := &unsignedFinalizerIterator{UnsignedIterator: inner, logger: logger}
 	runtime.SetFinalizer(itr, (*unsignedFinalizerIterator).closeGC)
 	return itr
 }
 
 func (itr *unsignedFinalizerIterator) closeGC() {
-	runtime.SetFinalizer(itr, nil)
-	itr.logger.Error("UnsignedIterator finalized by GC")
-	itr.Close()
+	go func() {
+		itr.logger.Error("UnsignedIterator finalized by GC")
+		itr.Close()
+	}()
 }
 
 func (itr *unsignedFinalizerIterator) Close() error {
@@ -1338,6 +1360,10 @@ func (c *unsignedAscendingCursor) peekTSM() (t int64, v uint64) {
 
 // close closes the cursor and any dependent cursors.
 func (c *unsignedAscendingCursor) close() error {
+	if c.tsm.keyCursor == nil {
+		return nil
+	}
+
 	c.tsm.keyCursor.Close()
 	c.tsm.keyCursor = nil
 	c.cache.values = nil
@@ -1455,6 +1481,10 @@ func (c *unsignedDescendingCursor) peekTSM() (t int64, v uint64) {
 
 // close closes the cursor and any dependent cursors.
 func (c *unsignedDescendingCursor) close() error {
+	if c.tsm.keyCursor == nil {
+		return nil
+	}
+
 	c.tsm.keyCursor.Close()
 	c.tsm.keyCursor = nil
 	c.cache.values = nil
@@ -1516,10 +1546,10 @@ func (c *unsignedDescendingCursor) nextTSM() {
 
 type stringFinalizerIterator struct {
 	query.StringIterator
-	logger zap.Logger
+	logger *zap.Logger
 }
 
-func newStringFinalizerIterator(inner query.StringIterator, logger zap.Logger) *stringFinalizerIterator {
+func newStringFinalizerIterator(inner query.StringIterator, logger *zap.Logger) *stringFinalizerIterator {
 	itr := &stringFinalizerIterator{StringIterator: inner, logger: logger}
 	runtime.SetFinalizer(itr, (*stringFinalizerIterator).closeGC)
 	return itr
@@ -1802,6 +1832,10 @@ func (c *stringAscendingCursor) peekTSM() (t int64, v string) {
 
 // close closes the cursor and any dependent cursors.
 func (c *stringAscendingCursor) close() error {
+	if c.tsm.keyCursor == nil {
+		return nil
+	}
+
 	c.tsm.keyCursor.Close()
 	c.tsm.keyCursor = nil
 	c.cache.values = nil
@@ -1919,6 +1953,10 @@ func (c *stringDescendingCursor) peekTSM() (t int64, v string) {
 
 // close closes the cursor and any dependent cursors.
 func (c *stringDescendingCursor) close() error {
+	if c.tsm.keyCursor == nil {
+		return nil
+	}
+
 	c.tsm.keyCursor.Close()
 	c.tsm.keyCursor = nil
 	c.cache.values = nil
@@ -1980,10 +2018,10 @@ func (c *stringDescendingCursor) nextTSM() {
 
 type booleanFinalizerIterator struct {
 	query.BooleanIterator
-	logger zap.Logger
+	logger *zap.Logger
 }
 
-func newBooleanFinalizerIterator(inner query.BooleanIterator, logger zap.Logger) *booleanFinalizerIterator {
+func newBooleanFinalizerIterator(inner query.BooleanIterator, logger *zap.Logger) *booleanFinalizerIterator {
 	itr := &booleanFinalizerIterator{BooleanIterator: inner, logger: logger}
 	runtime.SetFinalizer(itr, (*booleanFinalizerIterator).closeGC)
 	return itr
@@ -2266,6 +2304,10 @@ func (c *booleanAscendingCursor) peekTSM() (t int64, v bool) {
 
 // close closes the cursor and any dependent cursors.
 func (c *booleanAscendingCursor) close() error {
+	if c.tsm.keyCursor == nil {
+		return nil
+	}
+
 	c.tsm.keyCursor.Close()
 	c.tsm.keyCursor = nil
 	c.cache.values = nil
@@ -2383,6 +2425,10 @@ func (c *booleanDescendingCursor) peekTSM() (t int64, v bool) {
 
 // close closes the cursor and any dependent cursors.
 func (c *booleanDescendingCursor) close() error {
+	if c.tsm.keyCursor == nil {
+		return nil
+	}
+
 	c.tsm.keyCursor.Close()
 	c.tsm.keyCursor = nil
 	c.cache.values = nil

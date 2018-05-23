@@ -225,10 +225,7 @@ func (e *StatementExecutor) executeAlterRetentionPolicyStatement(stmt *influxql.
 	}
 
 	// Update the retention policy.
-	if err := e.MetaClient.UpdateRetentionPolicy(stmt.Database, stmt.Name, rpu, stmt.Default); err != nil {
-		return err
-	}
-	return nil
+	return e.MetaClient.UpdateRetentionPolicy(stmt.Database, stmt.Name, rpu, stmt.Default)
 }
 
 func (e *StatementExecutor) executeCreateContinuousQueryStatement(q *influxql.CreateContinuousQueryStatement) error {
@@ -306,11 +303,7 @@ func (e *StatementExecutor) executeCreateRetentionPolicyStatement(stmt *influxql
 
 	// Create new retention policy.
 	_, err := e.MetaClient.CreateRetentionPolicy(stmt.Database, &spec, stmt.Default)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return err
 }
 
 func (e *StatementExecutor) executeCreateSubscriptionStatement(q *influxql.CreateSubscriptionStatement) error {
@@ -786,6 +779,10 @@ func (e *StatementExecutor) executeShowMeasurementsStatement(q *influxql.ShowMea
 }
 
 func (e *StatementExecutor) executeShowMeasurementCardinalityStatement(stmt *influxql.ShowMeasurementCardinalityStatement) (models.Rows, error) {
+	if stmt.Database == "" {
+		return nil, ErrDatabaseNameRequired
+	}
+
 	n, err := e.TSDBStore.MeasurementsCardinality(stmt.Database)
 	if err != nil {
 		return nil, err
@@ -853,6 +850,10 @@ func (e *StatementExecutor) executeShowShardsStatement(stmt *influxql.ShowShards
 }
 
 func (e *StatementExecutor) executeShowSeriesCardinalityStatement(stmt *influxql.ShowSeriesCardinalityStatement) (models.Rows, error) {
+	if stmt.Database == "" {
+		return nil, ErrDatabaseNameRequired
+	}
+
 	n, err := e.TSDBStore.SeriesCardinality(stmt.Database)
 	if err != nil {
 		return nil, err

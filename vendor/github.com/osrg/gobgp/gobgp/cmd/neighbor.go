@@ -565,8 +565,8 @@ func checkOriginAsWasNotShown(p *table.Path, shownAs map[uint32]struct{}) bool {
 	if len(asPath) == 0 {
 		return false
 	}
-	aslist := asPath[len(asPath)-1].(*bgp.As4PathParam).AS
-	origin := aslist[len(aslist)-1]
+	asList := asPath[len(asPath)-1].GetAS()
+	origin := asList[len(asList)-1]
 
 	if _, ok := shownAs[origin]; ok {
 		return false
@@ -585,8 +585,8 @@ func showValidationInfo(p *table.Path, shownAs map[uint32]struct{}) error {
 
 	status := p.Validation().Status
 	reason := p.Validation().Reason
-	aslist := asPath[len(asPath)-1].(*bgp.As4PathParam).AS
-	origin := aslist[len(aslist)-1]
+	asList := asPath[len(asPath)-1].GetAS()
+	origin := asList[len(asList)-1]
 
 	fmt.Printf("Target Prefix: %s, AS: %d\n", p.GetNlri().String(), origin)
 	fmt.Printf("  This route is %s", status)
@@ -701,6 +701,7 @@ func showNeighborRib(r string, name string, args []string) error {
 		showAge = false
 	case CMD_VRF:
 		def = bgp.RF_IPv4_UC
+		showBest = true
 	}
 	family, err := checkAddressFamily(def)
 	if err != nil {
@@ -768,7 +769,7 @@ func showNeighborRib(r string, name string, args []string) error {
 
 	switch r {
 	case CMD_LOCAL, CMD_ADJ_IN, CMD_ACCEPTED, CMD_REJECTED, CMD_ADJ_OUT:
-		if rib.Info("").NumDestination == 0 {
+		if rib.Info("", 0).NumDestination == 0 {
 			peer, err := client.GetNeighbor(name, false)
 			if err != nil {
 				return err
@@ -780,14 +781,25 @@ func showNeighborRib(r string, name string, args []string) error {
 	}
 
 	if globalOpts.Json {
-		j, _ := json.Marshal(rib.GetDestinations())
+		d := make(map[string]*table.Destination)
+		for _, dst := range rib.GetDestinations() {
+			d[dst.GetNlri().String()] = dst
+		}
+		j, _ := json.Marshal(d)
 		fmt.Println(string(j))
 		return nil
 	}
 
 	if validationTarget != "" {
 		// show RPKI validation info
-		d := rib.GetDestination(validationTarget)
+		addr, _, _ := net.ParseCIDR(validationTarget)
+		var nlri bgp.AddrPrefixInterface
+		if addr.To16() == nil {
+			nlri, _ = bgp.NewPrefixFromRouteFamily(bgp.AFI_IP, bgp.SAFI_UNICAST, validationTarget)
+		} else {
+			nlri, _ = bgp.NewPrefixFromRouteFamily(bgp.AFI_IP6, bgp.SAFI_UNICAST, validationTarget)
+		}
+		d := rib.GetDestination(nlri)
 		if d == nil {
 			fmt.Println("Network not in table")
 			return nil
@@ -806,18 +818,10 @@ func showNeighborRib(r string, name string, args []string) error {
 			switch r {
 			case CMD_ACCEPTED:
 				for _, p := range d.GetAllKnownPathList() {
-					if p.Filtered("") > table.POLICY_DIRECTION_NONE {
-						continue
-					}
 					ps = append(ps, p)
 				}
 			case CMD_REJECTED:
-				for _, p := range d.GetAllKnownPathList() {
-					if p.Filtered("") == table.POLICY_DIRECTION_NONE {
-						continue
-					}
-					ps = append(ps, p)
-				}
+				// always nothing
 			default:
 				ps = d.GetAllKnownPathList()
 			}
@@ -871,8 +875,6 @@ func showNeighborPolicy(remoteIP, policyType string, indent int) error {
 	var err error
 
 	switch strings.ToLower(policyType) {
-	case "in":
-		assignment, err = client.GetRouteServerInPolicy(remoteIP)
 	case "import":
 		assignment, err = client.GetRouteServerImportPolicy(remoteIP)
 	case "export":
@@ -925,8 +927,6 @@ func modNeighborPolicy(remoteIP, policyType, cmdType string, args []string) erro
 		Name: remoteIP,
 	}
 	switch strings.ToLower(policyType) {
-	case "in":
-		assign.Type = table.POLICY_DIRECTION_IN
 	case "import":
 		assign.Type = table.POLICY_DIRECTION_IMPORT
 	case "export":
@@ -973,13 +973,22 @@ func modNeighborPolicy(remoteIP, policyType, cmdType string, args []string) erro
 }
 
 func modNeighbor(cmdType string, args []string) error {
-	m := extractReserved(args, []string{"interface", "as", "family", "vrf", "route-reflector-client", "route-server-client", "allow-own-as", "remove-private-as", "replace-peer-as"})
+	params := map[string]int{"interface": PARAM_SINGLE}
 	usage := fmt.Sprintf("usage: gobgp neighbor %s [ <neighbor-address> | interface <neighbor-interface> ]", cmdType)
 	if cmdType == CMD_ADD {
+		params["as"] = PARAM_SINGLE
+		params["family"] = PARAM_SINGLE
+		params["vrf"] = PARAM_SINGLE
+		params["route-reflector-client"] = PARAM_SINGLE
+		params["route-server-client"] = PARAM_FLAG
+		params["allow-own-as"] = PARAM_SINGLE
+		params["remove-private-as"] = PARAM_SINGLE
+		params["replace-peer-as"] = PARAM_FLAG
 		usage += " as <VALUE> [ family <address-families-list> | vrf <vrf-name> | route-reflector-client [<cluster-id>] | route-server-client | allow-own-as <num> | remove-private-as (all|replace) | replace-peer-as ]"
 	}
 
-	if (len(m[""]) != 1 && len(m["interface"]) != 1) || len(m["as"]) > 1 || len(m["family"]) > 1 || len(m["vrf"]) > 1 || len(m["route-reflector-client"]) > 1 || len(m["allow-own-as"]) > 1 || len(m["remove-private-as"]) > 1 {
+	m, err := extractReserved(args, params)
+	if err != nil || (len(m[""]) != 1 && len(m["interface"]) != 1) {
 		return fmt.Errorf("%s", usage)
 	}
 	unnumbered := len(m["interface"]) > 0
@@ -989,10 +998,10 @@ func modNeighbor(cmdType string, args []string) error {
 		}
 	}
 
-	getConf := func(asn int) (*config.Neighbor, error) {
+	getConf := func(asn uint32) (*config.Neighbor, error) {
 		peer := &config.Neighbor{
 			Config: config.NeighborConfig{
-				PeerAs: uint32(asn),
+				PeerAs: asn,
 			},
 		}
 		if unnumbered {
@@ -1032,7 +1041,7 @@ func modNeighbor(cmdType string, args []string) error {
 			}
 		}
 		if option, ok := m["allow-own-as"]; ok {
-			as, err := strconv.Atoi(option[0])
+			as, err := strconv.ParseUint(option[0], 10, 8)
 			if err != nil {
 				return nil, err
 			}
@@ -1054,16 +1063,15 @@ func modNeighbor(cmdType string, args []string) error {
 		return peer, nil
 	}
 
-	var as int
+	var as uint64
 	if len(m["as"]) > 0 {
 		var err error
-		as, err = strconv.Atoi(m["as"][0])
-		if err != nil {
+		if as, err = strconv.ParseUint(m["as"][0], 10, 32); err != nil {
 			return err
 		}
 	}
 
-	n, err := getConf(as)
+	n, err := getConf(uint32(as))
 	if err != nil {
 		return err
 	}
