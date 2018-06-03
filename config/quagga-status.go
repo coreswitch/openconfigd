@@ -80,6 +80,12 @@ func QuaggaStatusBgpSummary(vrf string, stat *GobgpStat) error {
 }
 
 func QuaggaStatusRib(vrf string, stat *GobgpStat) error {
+	if len(stat.Neighbor) == 0 {
+		log.Info("QuaggaStatusRib(): no neighbors")
+		return nil
+	} else {
+		log.Infof("QuaggaStatusRib(): No. of neighbors: %d", len(stat.Neighbor))
+	}
 	var in []string
 	fmt.Println("QuaggaStatusRib(): neighbor", stat.Neighbor[0].Peer)
 

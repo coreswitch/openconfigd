@@ -131,13 +131,13 @@ func OspfStatusRoute(vrfName string, stat *OspfVrfStat) error {
 	return nil
 }
 func OspfStatusNeighbor(vrfName string, stat *OspfVrfStat) error {
-	var in []string
-	in = append(in, "show ip ospf neighbor\n")
-	out, err := VrfQuaggaGet(vrfName, "ospfd", quagga.GetPasswd(), time.Second, in)
-	if err != nil {
-		log.Error("QuaggaStatusBgpSummary: VrfQuaggaGet()", err)
-		return err
-	}
+    var in []string
+    in = append(in, "show ip ospf neighbor\n")
+    out, err := VrfQuaggaGet(vrfName, "ospfd", quagga.GetPasswd(), time.Second, in)
+    if err != nil {
+        log.Error("QuaggaStatusBgpSummary: VrfQuaggaGet()", err)
+        return err
+    }
 
 	strs := strings.Split(out[0], "\n")
 	for _, str := range strs {

@@ -35,8 +35,8 @@ import (
 const defaultGrpcEndpoint = ":50051"
 
 var (
-	gobgpConfig   GobgpConfig
-	gobgpRouterId string
+	gobgpConfig       GobgpConfig
+	gobgpRouterId     string
 	gobgpGrpcEndpoint string = defaultGrpcEndpoint
 )
 
@@ -655,12 +655,12 @@ func GobgpUpdate(cfg *GobgpConfig) error {
 	GobgpClearDefinedSet(client)
 
 	// Set and update.
-	GobgpSetZebra(client, cfg, 3)
 	GobgpUpdateVrf(client, cfg)
 	GobgpUpdateNeighbor(client, cfg)
 	GobgpSetDefinedSet(client, cfg)
 	GobgpSetPolicyDefinition(client, cfg)
 	GobgpSetGlobalPolicy(client, cfg)
+	GobgpSetZebra(client, cfg, 3)
 
 	// Soft reset all of neighbors to reflect policy change.
 	GobgpSoftresetNeighbor(client, cfg)
@@ -683,12 +683,12 @@ func GobgpReset(cfg *GobgpConfig) error {
 
 	// Set.
 	GobgpSetGlobal(client, cfg)
-	GobgpSetZebra(client, cfg, 3)
 	GobgpSetVrf(client, cfg)
 	GobgpSetNeighbor(client, cfg)
 	GobgpSetDefinedSet(client, cfg)
 	GobgpSetPolicyDefinition(client, cfg)
 	GobgpSetGlobalPolicy(client, cfg)
+	GobgpSetZebra(client, cfg, 3)
 
 	return nil
 }
@@ -1077,12 +1077,12 @@ func GobgpWanConfig(cfg *GobgpConfig) {
 	defer c.Close()
 
 	GobgpSetGlobal(c, cfg)
-	GobgpSetZebra(c, cfg, 2)
 	GobgpSetNeighbor(c, cfg)
 	GobgpSetDefinedSet(c, cfg)
 	GobgpSetPolicyDefinition(c, cfg)
 	GobgpSetGlobalPolicy(c, cfg)
 	GobgpSetRib(c, cfg)
+	GobgpSetZebra(c, cfg, 2)
 }
 
 // GoBGP WAN
