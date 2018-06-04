@@ -8,8 +8,19 @@ It is generated from these files:
 	openconfig.proto
 
 It has these top-level messages:
+	Decimal64
+	ScalarArray
+	Notification
+	TypedValue
+	Update
+	SubscribeRequest
+	SubscribeResponse
+	SubscriptionList
+	Subscription
+	QOSMarking
 	Path
 	PathElem
+	ModelData
 	ExecRequest
 	ExecReply
 	RegisterRequest
@@ -18,7 +29,7 @@ It has these top-level messages:
 	RegisterModuleReply
 	ExecModuleRequest
 	ExecModuleReply
-	SubscribeRequest
+	SubscribeRequestOrig
 	ConfigRequest
 	ConfigReply
 	ShowRequest
@@ -45,6 +56,68 @@ var _ = math.Inf
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
 const _ = proto.ProtoPackageIsVersion2 // please upgrade the proto package
+
+// Encoding defines the value encoding formats that are supported by the gNMI
+// protocol. These encodings are used by both the client (when sending Set
+// messages to modify the state of the target) and the target when serializing
+// data to be returned to the client (in both Subscribe and Get RPCs).
+// Reference: gNMI Specification Section 2.3
+type Encoding int32
+
+const (
+	Encoding_JSON      Encoding = 0
+	Encoding_BYTES     Encoding = 1
+	Encoding_PROTO     Encoding = 2
+	Encoding_ASCII     Encoding = 3
+	Encoding_JSON_IETF Encoding = 4
+)
+
+var Encoding_name = map[int32]string{
+	0: "JSON",
+	1: "BYTES",
+	2: "PROTO",
+	3: "ASCII",
+	4: "JSON_IETF",
+}
+var Encoding_value = map[string]int32{
+	"JSON":      0,
+	"BYTES":     1,
+	"PROTO":     2,
+	"ASCII":     3,
+	"JSON_IETF": 4,
+}
+
+func (x Encoding) String() string {
+	return proto.EnumName(Encoding_name, int32(x))
+}
+func (Encoding) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{0} }
+
+// SubscriptionMode is the mode of the subscription, specifying how the
+// target must return values in a subscription.
+// Reference: gNMI Specification Section 3.5.1.3
+type SubscriptionMode int32
+
+const (
+	SubscriptionMode_TARGET_DEFINED SubscriptionMode = 0
+	SubscriptionMode_ON_CHANGE      SubscriptionMode = 1
+	SubscriptionMode_SAMPLE         SubscriptionMode = 2
+)
+
+var SubscriptionMode_name = map[int32]string{
+	0: "TARGET_DEFINED",
+	1: "ON_CHANGE",
+	2: "SAMPLE",
+}
+var SubscriptionMode_value = map[string]int32{
+	"TARGET_DEFINED": 0,
+	"ON_CHANGE":      1,
+	"SAMPLE":         2,
+}
+
+func (x SubscriptionMode) String() string {
+	return proto.EnumName(SubscriptionMode_name, int32(x))
+}
+func (SubscriptionMode) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{1} }
 
 // Command message type.
 type ExecType int32
@@ -75,7 +148,7 @@ var ExecType_value = map[string]int32{
 func (x ExecType) String() string {
 	return proto.EnumName(ExecType_name, int32(x))
 }
-func (ExecType) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{0} }
+func (ExecType) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{2} }
 
 // Command reply format type.
 type ExecConentType int32
@@ -97,7 +170,7 @@ var ExecConentType_value = map[string]int32{
 func (x ExecConentType) String() string {
 	return proto.EnumName(ExecConentType_name, int32(x))
 }
-func (ExecConentType) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{1} }
+func (ExecConentType) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{3} }
 
 // Command exec code.
 type ExecCode int32
@@ -134,7 +207,7 @@ var ExecCode_value = map[string]int32{
 func (x ExecCode) String() string {
 	return proto.EnumName(ExecCode_name, int32(x))
 }
-func (ExecCode) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{2} }
+func (ExecCode) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{4} }
 
 // Configuration service
 type ConfigType int32
@@ -186,29 +259,955 @@ var ConfigType_value = map[string]int32{
 func (x ConfigType) String() string {
 	return proto.EnumName(ConfigType_name, int32(x))
 }
-func (ConfigType) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{3} }
+func (ConfigType) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{5} }
 
 // Subscribe type.
 type SubscribeType int32
 
 const (
-	SubscribeType_COMMAND SubscribeType = 0
-	SubscribeType_JSON    SubscribeType = 1
+	SubscribeType_COMMAND   SubscribeType = 0
+	SubscribeType_JSON_ORIG SubscribeType = 1
 )
 
 var SubscribeType_name = map[int32]string{
 	0: "COMMAND",
-	1: "JSON",
+	1: "JSON_ORIG",
 }
 var SubscribeType_value = map[string]int32{
-	"COMMAND": 0,
-	"JSON":    1,
+	"COMMAND":   0,
+	"JSON_ORIG": 1,
 }
 
 func (x SubscribeType) String() string {
 	return proto.EnumName(SubscribeType_name, int32(x))
 }
-func (SubscribeType) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{4} }
+func (SubscribeType) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{6} }
+
+// Mode of the subscription.
+type SubscriptionList_Mode int32
+
+const (
+	SubscriptionList_STREAM SubscriptionList_Mode = 0
+	SubscriptionList_ONCE   SubscriptionList_Mode = 1
+	SubscriptionList_POLL   SubscriptionList_Mode = 2
+)
+
+var SubscriptionList_Mode_name = map[int32]string{
+	0: "STREAM",
+	1: "ONCE",
+	2: "POLL",
+}
+var SubscriptionList_Mode_value = map[string]int32{
+	"STREAM": 0,
+	"ONCE":   1,
+	"POLL":   2,
+}
+
+func (x SubscriptionList_Mode) String() string {
+	return proto.EnumName(SubscriptionList_Mode_name, int32(x))
+}
+func (SubscriptionList_Mode) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{7, 0} }
+
+// Decimal64 is used to encode a fixed precision decimal number. The value
+// is expressed as a set of digits with the precision specifying the
+// number of digits following the decimal point in the digit set.
+type Decimal64 struct {
+	Digits    int64  `protobuf:"varint,1,opt,name=digits" json:"digits,omitempty"`
+	Precision uint32 `protobuf:"varint,2,opt,name=precision" json:"precision,omitempty"`
+}
+
+func (m *Decimal64) Reset()                    { *m = Decimal64{} }
+func (m *Decimal64) String() string            { return proto.CompactTextString(m) }
+func (*Decimal64) ProtoMessage()               {}
+func (*Decimal64) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{0} }
+
+func (m *Decimal64) GetDigits() int64 {
+	if m != nil {
+		return m.Digits
+	}
+	return 0
+}
+
+func (m *Decimal64) GetPrecision() uint32 {
+	if m != nil {
+		return m.Precision
+	}
+	return 0
+}
+
+// ScalarArray is used to encode a mixed-type array of values.
+type ScalarArray struct {
+	// The set of elements within the array. Each TypedValue message should
+	// specify only elements that have a field identifier of 1-7 (i.e., the
+	// values are scalar values).
+	Element []*TypedValue `protobuf:"bytes,1,rep,name=element" json:"element,omitempty"`
+}
+
+func (m *ScalarArray) Reset()                    { *m = ScalarArray{} }
+func (m *ScalarArray) String() string            { return proto.CompactTextString(m) }
+func (*ScalarArray) ProtoMessage()               {}
+func (*ScalarArray) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{1} }
+
+func (m *ScalarArray) GetElement() []*TypedValue {
+	if m != nil {
+		return m.Element
+	}
+	return nil
+}
+
+type Notification struct {
+	Timestamp int64 `protobuf:"varint,1,opt,name=timestamp" json:"timestamp,omitempty"`
+	Prefix    *Path `protobuf:"bytes,2,opt,name=prefix" json:"prefix,omitempty"`
+	// An alias for the path specified in the prefix field.
+	// Reference: gNMI Specification Section 2.4.2
+	Alias  string    `protobuf:"bytes,3,opt,name=alias" json:"alias,omitempty"`
+	Update []*Update `protobuf:"bytes,4,rep,name=update" json:"update,omitempty"`
+	Delete []*Path   `protobuf:"bytes,5,rep,name=delete" json:"delete,omitempty"`
+}
+
+func (m *Notification) Reset()                    { *m = Notification{} }
+func (m *Notification) String() string            { return proto.CompactTextString(m) }
+func (*Notification) ProtoMessage()               {}
+func (*Notification) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{2} }
+
+func (m *Notification) GetTimestamp() int64 {
+	if m != nil {
+		return m.Timestamp
+	}
+	return 0
+}
+
+func (m *Notification) GetPrefix() *Path {
+	if m != nil {
+		return m.Prefix
+	}
+	return nil
+}
+
+func (m *Notification) GetAlias() string {
+	if m != nil {
+		return m.Alias
+	}
+	return ""
+}
+
+func (m *Notification) GetUpdate() []*Update {
+	if m != nil {
+		return m.Update
+	}
+	return nil
+}
+
+func (m *Notification) GetDelete() []*Path {
+	if m != nil {
+		return m.Delete
+	}
+	return nil
+}
+
+// TypedValue is used to encode a value being sent between the client and
+// target (originated by either entity).
+type TypedValue struct {
+	// One of the fields within the val oneof is populated with the value
+	// of the update. The type of the value being included in the Update
+	// determines which field should be populated. In the case that the
+	// encoding is a particular form of the base protobuf type, a specific
+	// field is used to store the value (e.g., json_val).
+	//
+	// Types that are valid to be assigned to Value:
+	//	*TypedValue_StringVal
+	//	*TypedValue_IntVal
+	//	*TypedValue_UintVal
+	//	*TypedValue_BoolVal
+	//	*TypedValue_BytesVal
+	//	*TypedValue_FloatVal
+	//	*TypedValue_DecimalVal
+	//	*TypedValue_LeaflistVal
+	//	*TypedValue_JsonVal
+	//	*TypedValue_JsonIetfVal
+	//	*TypedValue_AsciiVal
+	Value isTypedValue_Value `protobuf_oneof:"value"`
+}
+
+func (m *TypedValue) Reset()                    { *m = TypedValue{} }
+func (m *TypedValue) String() string            { return proto.CompactTextString(m) }
+func (*TypedValue) ProtoMessage()               {}
+func (*TypedValue) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{3} }
+
+type isTypedValue_Value interface {
+	isTypedValue_Value()
+}
+
+type TypedValue_StringVal struct {
+	StringVal string `protobuf:"bytes,1,opt,name=string_val,json=stringVal,oneof"`
+}
+type TypedValue_IntVal struct {
+	IntVal int64 `protobuf:"varint,2,opt,name=int_val,json=intVal,oneof"`
+}
+type TypedValue_UintVal struct {
+	UintVal uint64 `protobuf:"varint,3,opt,name=uint_val,json=uintVal,oneof"`
+}
+type TypedValue_BoolVal struct {
+	BoolVal bool `protobuf:"varint,4,opt,name=bool_val,json=boolVal,oneof"`
+}
+type TypedValue_BytesVal struct {
+	BytesVal []byte `protobuf:"bytes,5,opt,name=bytes_val,json=bytesVal,proto3,oneof"`
+}
+type TypedValue_FloatVal struct {
+	FloatVal float32 `protobuf:"fixed32,6,opt,name=float_val,json=floatVal,oneof"`
+}
+type TypedValue_DecimalVal struct {
+	DecimalVal *Decimal64 `protobuf:"bytes,7,opt,name=decimal_val,json=decimalVal,oneof"`
+}
+type TypedValue_LeaflistVal struct {
+	LeaflistVal *ScalarArray `protobuf:"bytes,8,opt,name=leaflist_val,json=leaflistVal,oneof"`
+}
+type TypedValue_JsonVal struct {
+	JsonVal []byte `protobuf:"bytes,10,opt,name=json_val,json=jsonVal,proto3,oneof"`
+}
+type TypedValue_JsonIetfVal struct {
+	JsonIetfVal []byte `protobuf:"bytes,11,opt,name=json_ietf_val,json=jsonIetfVal,proto3,oneof"`
+}
+type TypedValue_AsciiVal struct {
+	AsciiVal string `protobuf:"bytes,12,opt,name=ascii_val,json=asciiVal,oneof"`
+}
+
+func (*TypedValue_StringVal) isTypedValue_Value()   {}
+func (*TypedValue_IntVal) isTypedValue_Value()      {}
+func (*TypedValue_UintVal) isTypedValue_Value()     {}
+func (*TypedValue_BoolVal) isTypedValue_Value()     {}
+func (*TypedValue_BytesVal) isTypedValue_Value()    {}
+func (*TypedValue_FloatVal) isTypedValue_Value()    {}
+func (*TypedValue_DecimalVal) isTypedValue_Value()  {}
+func (*TypedValue_LeaflistVal) isTypedValue_Value() {}
+func (*TypedValue_JsonVal) isTypedValue_Value()     {}
+func (*TypedValue_JsonIetfVal) isTypedValue_Value() {}
+func (*TypedValue_AsciiVal) isTypedValue_Value()    {}
+
+func (m *TypedValue) GetValue() isTypedValue_Value {
+	if m != nil {
+		return m.Value
+	}
+	return nil
+}
+
+func (m *TypedValue) GetStringVal() string {
+	if x, ok := m.GetValue().(*TypedValue_StringVal); ok {
+		return x.StringVal
+	}
+	return ""
+}
+
+func (m *TypedValue) GetIntVal() int64 {
+	if x, ok := m.GetValue().(*TypedValue_IntVal); ok {
+		return x.IntVal
+	}
+	return 0
+}
+
+func (m *TypedValue) GetUintVal() uint64 {
+	if x, ok := m.GetValue().(*TypedValue_UintVal); ok {
+		return x.UintVal
+	}
+	return 0
+}
+
+func (m *TypedValue) GetBoolVal() bool {
+	if x, ok := m.GetValue().(*TypedValue_BoolVal); ok {
+		return x.BoolVal
+	}
+	return false
+}
+
+func (m *TypedValue) GetBytesVal() []byte {
+	if x, ok := m.GetValue().(*TypedValue_BytesVal); ok {
+		return x.BytesVal
+	}
+	return nil
+}
+
+func (m *TypedValue) GetFloatVal() float32 {
+	if x, ok := m.GetValue().(*TypedValue_FloatVal); ok {
+		return x.FloatVal
+	}
+	return 0
+}
+
+func (m *TypedValue) GetDecimalVal() *Decimal64 {
+	if x, ok := m.GetValue().(*TypedValue_DecimalVal); ok {
+		return x.DecimalVal
+	}
+	return nil
+}
+
+func (m *TypedValue) GetLeaflistVal() *ScalarArray {
+	if x, ok := m.GetValue().(*TypedValue_LeaflistVal); ok {
+		return x.LeaflistVal
+	}
+	return nil
+}
+
+func (m *TypedValue) GetJsonVal() []byte {
+	if x, ok := m.GetValue().(*TypedValue_JsonVal); ok {
+		return x.JsonVal
+	}
+	return nil
+}
+
+func (m *TypedValue) GetJsonIetfVal() []byte {
+	if x, ok := m.GetValue().(*TypedValue_JsonIetfVal); ok {
+		return x.JsonIetfVal
+	}
+	return nil
+}
+
+func (m *TypedValue) GetAsciiVal() string {
+	if x, ok := m.GetValue().(*TypedValue_AsciiVal); ok {
+		return x.AsciiVal
+	}
+	return ""
+}
+
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*TypedValue) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _TypedValue_OneofMarshaler, _TypedValue_OneofUnmarshaler, _TypedValue_OneofSizer, []interface{}{
+		(*TypedValue_StringVal)(nil),
+		(*TypedValue_IntVal)(nil),
+		(*TypedValue_UintVal)(nil),
+		(*TypedValue_BoolVal)(nil),
+		(*TypedValue_BytesVal)(nil),
+		(*TypedValue_FloatVal)(nil),
+		(*TypedValue_DecimalVal)(nil),
+		(*TypedValue_LeaflistVal)(nil),
+		(*TypedValue_JsonVal)(nil),
+		(*TypedValue_JsonIetfVal)(nil),
+		(*TypedValue_AsciiVal)(nil),
+	}
+}
+
+func _TypedValue_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*TypedValue)
+	// value
+	switch x := m.Value.(type) {
+	case *TypedValue_StringVal:
+		b.EncodeVarint(1<<3 | proto.WireBytes)
+		b.EncodeStringBytes(x.StringVal)
+	case *TypedValue_IntVal:
+		b.EncodeVarint(2<<3 | proto.WireVarint)
+		b.EncodeVarint(uint64(x.IntVal))
+	case *TypedValue_UintVal:
+		b.EncodeVarint(3<<3 | proto.WireVarint)
+		b.EncodeVarint(uint64(x.UintVal))
+	case *TypedValue_BoolVal:
+		t := uint64(0)
+		if x.BoolVal {
+			t = 1
+		}
+		b.EncodeVarint(4<<3 | proto.WireVarint)
+		b.EncodeVarint(t)
+	case *TypedValue_BytesVal:
+		b.EncodeVarint(5<<3 | proto.WireBytes)
+		b.EncodeRawBytes(x.BytesVal)
+	case *TypedValue_FloatVal:
+		b.EncodeVarint(6<<3 | proto.WireFixed32)
+		b.EncodeFixed32(uint64(math.Float32bits(x.FloatVal)))
+	case *TypedValue_DecimalVal:
+		b.EncodeVarint(7<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.DecimalVal); err != nil {
+			return err
+		}
+	case *TypedValue_LeaflistVal:
+		b.EncodeVarint(8<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.LeaflistVal); err != nil {
+			return err
+		}
+	case *TypedValue_JsonVal:
+		b.EncodeVarint(10<<3 | proto.WireBytes)
+		b.EncodeRawBytes(x.JsonVal)
+	case *TypedValue_JsonIetfVal:
+		b.EncodeVarint(11<<3 | proto.WireBytes)
+		b.EncodeRawBytes(x.JsonIetfVal)
+	case *TypedValue_AsciiVal:
+		b.EncodeVarint(12<<3 | proto.WireBytes)
+		b.EncodeStringBytes(x.AsciiVal)
+	case nil:
+	default:
+		return fmt.Errorf("TypedValue.Value has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _TypedValue_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*TypedValue)
+	switch tag {
+	case 1: // value.string_val
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeStringBytes()
+		m.Value = &TypedValue_StringVal{x}
+		return true, err
+	case 2: // value.int_val
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Value = &TypedValue_IntVal{int64(x)}
+		return true, err
+	case 3: // value.uint_val
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Value = &TypedValue_UintVal{x}
+		return true, err
+	case 4: // value.bool_val
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Value = &TypedValue_BoolVal{x != 0}
+		return true, err
+	case 5: // value.bytes_val
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeRawBytes(true)
+		m.Value = &TypedValue_BytesVal{x}
+		return true, err
+	case 6: // value.float_val
+		if wire != proto.WireFixed32 {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeFixed32()
+		m.Value = &TypedValue_FloatVal{math.Float32frombits(uint32(x))}
+		return true, err
+	case 7: // value.decimal_val
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(Decimal64)
+		err := b.DecodeMessage(msg)
+		m.Value = &TypedValue_DecimalVal{msg}
+		return true, err
+	case 8: // value.leaflist_val
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(ScalarArray)
+		err := b.DecodeMessage(msg)
+		m.Value = &TypedValue_LeaflistVal{msg}
+		return true, err
+	case 10: // value.json_val
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeRawBytes(true)
+		m.Value = &TypedValue_JsonVal{x}
+		return true, err
+	case 11: // value.json_ietf_val
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeRawBytes(true)
+		m.Value = &TypedValue_JsonIetfVal{x}
+		return true, err
+	case 12: // value.ascii_val
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeStringBytes()
+		m.Value = &TypedValue_AsciiVal{x}
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+func _TypedValue_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*TypedValue)
+	// value
+	switch x := m.Value.(type) {
+	case *TypedValue_StringVal:
+		n += proto.SizeVarint(1<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(len(x.StringVal)))
+		n += len(x.StringVal)
+	case *TypedValue_IntVal:
+		n += proto.SizeVarint(2<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.IntVal))
+	case *TypedValue_UintVal:
+		n += proto.SizeVarint(3<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.UintVal))
+	case *TypedValue_BoolVal:
+		n += proto.SizeVarint(4<<3 | proto.WireVarint)
+		n += 1
+	case *TypedValue_BytesVal:
+		n += proto.SizeVarint(5<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(len(x.BytesVal)))
+		n += len(x.BytesVal)
+	case *TypedValue_FloatVal:
+		n += proto.SizeVarint(6<<3 | proto.WireFixed32)
+		n += 4
+	case *TypedValue_DecimalVal:
+		s := proto.Size(x.DecimalVal)
+		n += proto.SizeVarint(7<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *TypedValue_LeaflistVal:
+		s := proto.Size(x.LeaflistVal)
+		n += proto.SizeVarint(8<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *TypedValue_JsonVal:
+		n += proto.SizeVarint(10<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(len(x.JsonVal)))
+		n += len(x.JsonVal)
+	case *TypedValue_JsonIetfVal:
+		n += proto.SizeVarint(11<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(len(x.JsonIetfVal)))
+		n += len(x.JsonIetfVal)
+	case *TypedValue_AsciiVal:
+		n += proto.SizeVarint(12<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(len(x.AsciiVal)))
+		n += len(x.AsciiVal)
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
+// Update is a re-usable message that is used to store a particular Path,
+// Value pair.
+// Reference: gNMI Specification Section 2.1
+type Update struct {
+	Path *Path `protobuf:"bytes,1,opt,name=path" json:"path,omitempty"`
+	// Value value = 2 [deprecated=true];  // The value (value) for the update.
+	Val        *TypedValue `protobuf:"bytes,3,opt,name=val" json:"val,omitempty"`
+	Duplicates uint32      `protobuf:"varint,4,opt,name=duplicates" json:"duplicates,omitempty"`
+}
+
+func (m *Update) Reset()                    { *m = Update{} }
+func (m *Update) String() string            { return proto.CompactTextString(m) }
+func (*Update) ProtoMessage()               {}
+func (*Update) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{4} }
+
+func (m *Update) GetPath() *Path {
+	if m != nil {
+		return m.Path
+	}
+	return nil
+}
+
+func (m *Update) GetVal() *TypedValue {
+	if m != nil {
+		return m.Val
+	}
+	return nil
+}
+
+func (m *Update) GetDuplicates() uint32 {
+	if m != nil {
+		return m.Duplicates
+	}
+	return 0
+}
+
+// SubscribeRequest is the message sent by the client to the target when
+// initiating a subscription to a set of paths within the data tree. The
+// request field must be populated and the initial message must specify a
+// SubscriptionList to initiate a subscription. The message is subsequently
+// used to define aliases or trigger polled data to be sent by the target.
+// Reference: gNMI Specification Section 3.5.1.1
+type SubscribeRequest struct {
+	// Types that are valid to be assigned to Request:
+	//	*SubscribeRequest_Subscribe
+	Request isSubscribeRequest_Request `protobuf_oneof:"request"`
+}
+
+func (m *SubscribeRequest) Reset()                    { *m = SubscribeRequest{} }
+func (m *SubscribeRequest) String() string            { return proto.CompactTextString(m) }
+func (*SubscribeRequest) ProtoMessage()               {}
+func (*SubscribeRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{5} }
+
+type isSubscribeRequest_Request interface {
+	isSubscribeRequest_Request()
+}
+
+type SubscribeRequest_Subscribe struct {
+	Subscribe *SubscriptionList `protobuf:"bytes,1,opt,name=subscribe,oneof"`
+}
+
+func (*SubscribeRequest_Subscribe) isSubscribeRequest_Request() {}
+
+func (m *SubscribeRequest) GetRequest() isSubscribeRequest_Request {
+	if m != nil {
+		return m.Request
+	}
+	return nil
+}
+
+func (m *SubscribeRequest) GetSubscribe() *SubscriptionList {
+	if x, ok := m.GetRequest().(*SubscribeRequest_Subscribe); ok {
+		return x.Subscribe
+	}
+	return nil
+}
+
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*SubscribeRequest) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _SubscribeRequest_OneofMarshaler, _SubscribeRequest_OneofUnmarshaler, _SubscribeRequest_OneofSizer, []interface{}{
+		(*SubscribeRequest_Subscribe)(nil),
+	}
+}
+
+func _SubscribeRequest_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*SubscribeRequest)
+	// request
+	switch x := m.Request.(type) {
+	case *SubscribeRequest_Subscribe:
+		b.EncodeVarint(1<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.Subscribe); err != nil {
+			return err
+		}
+	case nil:
+	default:
+		return fmt.Errorf("SubscribeRequest.Request has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _SubscribeRequest_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*SubscribeRequest)
+	switch tag {
+	case 1: // request.subscribe
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(SubscriptionList)
+		err := b.DecodeMessage(msg)
+		m.Request = &SubscribeRequest_Subscribe{msg}
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+func _SubscribeRequest_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*SubscribeRequest)
+	// request
+	switch x := m.Request.(type) {
+	case *SubscribeRequest_Subscribe:
+		s := proto.Size(x.Subscribe)
+		n += proto.SizeVarint(1<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
+// SubscribeResponse is the message used by the target within a Subscribe RPC.
+// The target includes a Notification message which is used to transmit values
+// of the path(s) that are associated with the subscription. The same message
+// is to indicate that the target has sent all data values once (is
+// synchronized).
+// Reference: gNMI Specification Section 3.5.1.4
+type SubscribeResponse struct {
+	// Types that are valid to be assigned to Response:
+	//	*SubscribeResponse_Update
+	//	*SubscribeResponse_SyncResponse
+	Response isSubscribeResponse_Response `protobuf_oneof:"response"`
+}
+
+func (m *SubscribeResponse) Reset()                    { *m = SubscribeResponse{} }
+func (m *SubscribeResponse) String() string            { return proto.CompactTextString(m) }
+func (*SubscribeResponse) ProtoMessage()               {}
+func (*SubscribeResponse) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{6} }
+
+type isSubscribeResponse_Response interface {
+	isSubscribeResponse_Response()
+}
+
+type SubscribeResponse_Update struct {
+	Update *Notification `protobuf:"bytes,1,opt,name=update,oneof"`
+}
+type SubscribeResponse_SyncResponse struct {
+	SyncResponse bool `protobuf:"varint,3,opt,name=sync_response,json=syncResponse,oneof"`
+}
+
+func (*SubscribeResponse_Update) isSubscribeResponse_Response()       {}
+func (*SubscribeResponse_SyncResponse) isSubscribeResponse_Response() {}
+
+func (m *SubscribeResponse) GetResponse() isSubscribeResponse_Response {
+	if m != nil {
+		return m.Response
+	}
+	return nil
+}
+
+func (m *SubscribeResponse) GetUpdate() *Notification {
+	if x, ok := m.GetResponse().(*SubscribeResponse_Update); ok {
+		return x.Update
+	}
+	return nil
+}
+
+func (m *SubscribeResponse) GetSyncResponse() bool {
+	if x, ok := m.GetResponse().(*SubscribeResponse_SyncResponse); ok {
+		return x.SyncResponse
+	}
+	return false
+}
+
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*SubscribeResponse) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _SubscribeResponse_OneofMarshaler, _SubscribeResponse_OneofUnmarshaler, _SubscribeResponse_OneofSizer, []interface{}{
+		(*SubscribeResponse_Update)(nil),
+		(*SubscribeResponse_SyncResponse)(nil),
+	}
+}
+
+func _SubscribeResponse_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*SubscribeResponse)
+	// response
+	switch x := m.Response.(type) {
+	case *SubscribeResponse_Update:
+		b.EncodeVarint(1<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.Update); err != nil {
+			return err
+		}
+	case *SubscribeResponse_SyncResponse:
+		t := uint64(0)
+		if x.SyncResponse {
+			t = 1
+		}
+		b.EncodeVarint(3<<3 | proto.WireVarint)
+		b.EncodeVarint(t)
+	case nil:
+	default:
+		return fmt.Errorf("SubscribeResponse.Response has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _SubscribeResponse_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*SubscribeResponse)
+	switch tag {
+	case 1: // response.update
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(Notification)
+		err := b.DecodeMessage(msg)
+		m.Response = &SubscribeResponse_Update{msg}
+		return true, err
+	case 3: // response.sync_response
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Response = &SubscribeResponse_SyncResponse{x != 0}
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+func _SubscribeResponse_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*SubscribeResponse)
+	// response
+	switch x := m.Response.(type) {
+	case *SubscribeResponse_Update:
+		s := proto.Size(x.Update)
+		n += proto.SizeVarint(1<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case *SubscribeResponse_SyncResponse:
+		n += proto.SizeVarint(3<<3 | proto.WireVarint)
+		n += 1
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
+// SubscriptionList is used within a Subscribe message to specify the list of
+// paths that the client wishes to subscribe to. The message consists of a
+// list of (possibly prefixed) paths, and options that relate to the
+// subscription.
+// Reference: gNMI Specification Section 3.5.1.2
+type SubscriptionList struct {
+	Prefix       *Path           `protobuf:"bytes,1,opt,name=prefix" json:"prefix,omitempty"`
+	Subscription []*Subscription `protobuf:"bytes,2,rep,name=subscription" json:"subscription,omitempty"`
+	// Whether target defined aliases are allowed within the subscription.
+	UseAliases bool                  `protobuf:"varint,3,opt,name=use_aliases,json=useAliases" json:"use_aliases,omitempty"`
+	Qos        *QOSMarking           `protobuf:"bytes,4,opt,name=qos" json:"qos,omitempty"`
+	Mode       SubscriptionList_Mode `protobuf:"varint,5,opt,name=mode,enum=openconfig.SubscriptionList_Mode" json:"mode,omitempty"`
+	// Whether elements of the schema that are marked as eligible for aggregation
+	// should be aggregated or not.
+	AllowAggregation bool `protobuf:"varint,6,opt,name=allow_aggregation,json=allowAggregation" json:"allow_aggregation,omitempty"`
+	// The set of schemas that define the elements of the data tree that should
+	// be sent by the target.
+	UseModels []*ModelData `protobuf:"bytes,7,rep,name=use_models,json=useModels" json:"use_models,omitempty"`
+	// The encoding that the target should use within the Notifications generated
+	// corresponding to the SubscriptionList.
+	Encoding Encoding `protobuf:"varint,8,opt,name=encoding,enum=openconfig.Encoding" json:"encoding,omitempty"`
+	// An optional field to specify that only updates to current state should be
+	// sent to a client. If set, the initial state is not sent to the client but
+	// rather only the sync message followed by any subsequent updates to the
+	// current state. For ONCE and POLL modes, this causes the server to send only
+	// the sync message (Sec. 3.5.2.3).
+	UpdatesOnly bool `protobuf:"varint,9,opt,name=updates_only,json=updatesOnly" json:"updates_only,omitempty"`
+}
+
+func (m *SubscriptionList) Reset()                    { *m = SubscriptionList{} }
+func (m *SubscriptionList) String() string            { return proto.CompactTextString(m) }
+func (*SubscriptionList) ProtoMessage()               {}
+func (*SubscriptionList) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{7} }
+
+func (m *SubscriptionList) GetPrefix() *Path {
+	if m != nil {
+		return m.Prefix
+	}
+	return nil
+}
+
+func (m *SubscriptionList) GetSubscription() []*Subscription {
+	if m != nil {
+		return m.Subscription
+	}
+	return nil
+}
+
+func (m *SubscriptionList) GetUseAliases() bool {
+	if m != nil {
+		return m.UseAliases
+	}
+	return false
+}
+
+func (m *SubscriptionList) GetQos() *QOSMarking {
+	if m != nil {
+		return m.Qos
+	}
+	return nil
+}
+
+func (m *SubscriptionList) GetMode() SubscriptionList_Mode {
+	if m != nil {
+		return m.Mode
+	}
+	return SubscriptionList_STREAM
+}
+
+func (m *SubscriptionList) GetAllowAggregation() bool {
+	if m != nil {
+		return m.AllowAggregation
+	}
+	return false
+}
+
+func (m *SubscriptionList) GetUseModels() []*ModelData {
+	if m != nil {
+		return m.UseModels
+	}
+	return nil
+}
+
+func (m *SubscriptionList) GetEncoding() Encoding {
+	if m != nil {
+		return m.Encoding
+	}
+	return Encoding_JSON
+}
+
+func (m *SubscriptionList) GetUpdatesOnly() bool {
+	if m != nil {
+		return m.UpdatesOnly
+	}
+	return false
+}
+
+// Subscription is a single request within a SubscriptionList. The path
+// specified is interpreted (along with the prefix) as the elements of the data
+// tree that the client is subscribing to. The mode determines how the target
+// should trigger updates to be sent.
+// Reference: gNMI Specification Section 3.5.1.3
+type Subscription struct {
+	Path           *Path            `protobuf:"bytes,1,opt,name=path" json:"path,omitempty"`
+	Mode           SubscriptionMode `protobuf:"varint,2,opt,name=mode,enum=openconfig.SubscriptionMode" json:"mode,omitempty"`
+	SampleInterval uint64           `protobuf:"varint,3,opt,name=sample_interval,json=sampleInterval" json:"sample_interval,omitempty"`
+	// Indicates whether values that not changed should be sent in a SAMPLE
+	// subscription.
+	SuppressRedundant bool `protobuf:"varint,4,opt,name=suppress_redundant,json=suppressRedundant" json:"suppress_redundant,omitempty"`
+	// Specifies the maximum allowable silent period in nanoseconds when
+	// suppress_redundant is in use. The target should send a value at least once
+	// in the period specified.
+	HeartbeatInterval uint64 `protobuf:"varint,5,opt,name=heartbeat_interval,json=heartbeatInterval" json:"heartbeat_interval,omitempty"`
+}
+
+func (m *Subscription) Reset()                    { *m = Subscription{} }
+func (m *Subscription) String() string            { return proto.CompactTextString(m) }
+func (*Subscription) ProtoMessage()               {}
+func (*Subscription) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{8} }
+
+func (m *Subscription) GetPath() *Path {
+	if m != nil {
+		return m.Path
+	}
+	return nil
+}
+
+func (m *Subscription) GetMode() SubscriptionMode {
+	if m != nil {
+		return m.Mode
+	}
+	return SubscriptionMode_TARGET_DEFINED
+}
+
+func (m *Subscription) GetSampleInterval() uint64 {
+	if m != nil {
+		return m.SampleInterval
+	}
+	return 0
+}
+
+func (m *Subscription) GetSuppressRedundant() bool {
+	if m != nil {
+		return m.SuppressRedundant
+	}
+	return false
+}
+
+func (m *Subscription) GetHeartbeatInterval() uint64 {
+	if m != nil {
+		return m.HeartbeatInterval
+	}
+	return 0
+}
+
+// QOSMarking specifies the DSCP value to be set on transmitted telemetry
+// updates from the target.
+// Reference: gNMI Specification Section 3.5.1.2
+type QOSMarking struct {
+	Marking uint32 `protobuf:"varint,1,opt,name=marking" json:"marking,omitempty"`
+}
+
+func (m *QOSMarking) Reset()                    { *m = QOSMarking{} }
+func (m *QOSMarking) String() string            { return proto.CompactTextString(m) }
+func (*QOSMarking) ProtoMessage()               {}
+func (*QOSMarking) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{9} }
+
+func (m *QOSMarking) GetMarking() uint32 {
+	if m != nil {
+		return m.Marking
+	}
+	return 0
+}
 
 // Path encodes a data tree path as a series of repeated strings, with
 // each element of the path representing a data tree node name and the
@@ -226,7 +1225,7 @@ type Path struct {
 func (m *Path) Reset()                    { *m = Path{} }
 func (m *Path) String() string            { return proto.CompactTextString(m) }
 func (*Path) ProtoMessage()               {}
-func (*Path) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{0} }
+func (*Path) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{10} }
 
 func (m *Path) GetElement() []string {
 	if m != nil {
@@ -267,7 +1266,7 @@ type PathElem struct {
 func (m *PathElem) Reset()                    { *m = PathElem{} }
 func (m *PathElem) String() string            { return proto.CompactTextString(m) }
 func (*PathElem) ProtoMessage()               {}
-func (*PathElem) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{1} }
+func (*PathElem) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{11} }
 
 func (m *PathElem) GetName() string {
 	if m != nil {
@@ -281,6 +1280,43 @@ func (m *PathElem) GetKey() map[string]string {
 		return m.Key
 	}
 	return nil
+}
+
+// ModelData is used to describe a set of schema modules. It can be used in a
+// CapabilityResponse where a target reports the set of modules that it
+// supports, and within the SubscribeRequest and GetRequest messages to specify
+// the set of models from which data tree elements should be reported.
+// Reference: gNMI Specification Section 3.2.3
+type ModelData struct {
+	Name         string `protobuf:"bytes,1,opt,name=name" json:"name,omitempty"`
+	Organization string `protobuf:"bytes,2,opt,name=organization" json:"organization,omitempty"`
+	Version      string `protobuf:"bytes,3,opt,name=version" json:"version,omitempty"`
+}
+
+func (m *ModelData) Reset()                    { *m = ModelData{} }
+func (m *ModelData) String() string            { return proto.CompactTextString(m) }
+func (*ModelData) ProtoMessage()               {}
+func (*ModelData) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{12} }
+
+func (m *ModelData) GetName() string {
+	if m != nil {
+		return m.Name
+	}
+	return ""
+}
+
+func (m *ModelData) GetOrganization() string {
+	if m != nil {
+		return m.Organization
+	}
+	return ""
+}
+
+func (m *ModelData) GetVersion() string {
+	if m != nil {
+		return m.Version
+	}
+	return ""
 }
 
 // The request message containing user input string.
@@ -297,7 +1333,7 @@ type ExecRequest struct {
 func (m *ExecRequest) Reset()                    { *m = ExecRequest{} }
 func (m *ExecRequest) String() string            { return proto.CompactTextString(m) }
 func (*ExecRequest) ProtoMessage()               {}
-func (*ExecRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{2} }
+func (*ExecRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{13} }
 
 func (m *ExecRequest) GetType() ExecType {
 	if m != nil {
@@ -359,7 +1395,7 @@ type ExecReply struct {
 func (m *ExecReply) Reset()                    { *m = ExecReply{} }
 func (m *ExecReply) String() string            { return proto.CompactTextString(m) }
 func (*ExecReply) ProtoMessage()               {}
-func (*ExecReply) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{3} }
+func (*ExecReply) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{14} }
 
 func (m *ExecReply) GetCode() ExecCode {
 	if m != nil {
@@ -403,7 +1439,7 @@ type RegisterRequest struct {
 func (m *RegisterRequest) Reset()                    { *m = RegisterRequest{} }
 func (m *RegisterRequest) String() string            { return proto.CompactTextString(m) }
 func (*RegisterRequest) ProtoMessage()               {}
-func (*RegisterRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{4} }
+func (*RegisterRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{15} }
 
 func (m *RegisterRequest) GetName() string {
 	if m != nil {
@@ -462,7 +1498,7 @@ type RegisterReply struct {
 func (m *RegisterReply) Reset()                    { *m = RegisterReply{} }
 func (m *RegisterReply) String() string            { return proto.CompactTextString(m) }
 func (*RegisterReply) ProtoMessage()               {}
-func (*RegisterReply) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{5} }
+func (*RegisterReply) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{16} }
 
 func (m *RegisterReply) GetCallbackid() int32 {
 	if m != nil {
@@ -480,7 +1516,7 @@ type RegisterModuleRequest struct {
 func (m *RegisterModuleRequest) Reset()                    { *m = RegisterModuleRequest{} }
 func (m *RegisterModuleRequest) String() string            { return proto.CompactTextString(m) }
 func (*RegisterModuleRequest) ProtoMessage()               {}
-func (*RegisterModuleRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{6} }
+func (*RegisterModuleRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{17} }
 
 func (m *RegisterModuleRequest) GetModule() string {
 	if m != nil {
@@ -504,7 +1540,7 @@ type RegisterModuleReply struct {
 func (m *RegisterModuleReply) Reset()                    { *m = RegisterModuleReply{} }
 func (m *RegisterModuleReply) String() string            { return proto.CompactTextString(m) }
 func (*RegisterModuleReply) ProtoMessage()               {}
-func (*RegisterModuleReply) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{7} }
+func (*RegisterModuleReply) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{18} }
 
 func (m *RegisterModuleReply) GetResult() int32 {
 	if m != nil {
@@ -522,7 +1558,7 @@ type ExecModuleRequest struct {
 func (m *ExecModuleRequest) Reset()                    { *m = ExecModuleRequest{} }
 func (m *ExecModuleRequest) String() string            { return proto.CompactTextString(m) }
 func (*ExecModuleRequest) ProtoMessage()               {}
-func (*ExecModuleRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{8} }
+func (*ExecModuleRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{19} }
 
 func (m *ExecModuleRequest) GetCallbackid() int32 {
 	if m != nil {
@@ -547,7 +1583,7 @@ type ExecModuleReply struct {
 func (m *ExecModuleReply) Reset()                    { *m = ExecModuleReply{} }
 func (m *ExecModuleReply) String() string            { return proto.CompactTextString(m) }
 func (*ExecModuleReply) ProtoMessage()               {}
-func (*ExecModuleReply) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{9} }
+func (*ExecModuleReply) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{20} }
 
 func (m *ExecModuleReply) GetResult() int32 {
 	if m != nil {
@@ -563,24 +1599,24 @@ func (m *ExecModuleReply) GetLine() string {
 	return ""
 }
 
-type SubscribeRequest struct {
+type SubscribeRequestOrig struct {
 	Type SubscribeType `protobuf:"varint,1,opt,name=type,enum=openconfig.SubscribeType" json:"type,omitempty"`
 	Path string        `protobuf:"bytes,2,opt,name=path" json:"path,omitempty"`
 }
 
-func (m *SubscribeRequest) Reset()                    { *m = SubscribeRequest{} }
-func (m *SubscribeRequest) String() string            { return proto.CompactTextString(m) }
-func (*SubscribeRequest) ProtoMessage()               {}
-func (*SubscribeRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{10} }
+func (m *SubscribeRequestOrig) Reset()                    { *m = SubscribeRequestOrig{} }
+func (m *SubscribeRequestOrig) String() string            { return proto.CompactTextString(m) }
+func (*SubscribeRequestOrig) ProtoMessage()               {}
+func (*SubscribeRequestOrig) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{21} }
 
-func (m *SubscribeRequest) GetType() SubscribeType {
+func (m *SubscribeRequestOrig) GetType() SubscribeType {
 	if m != nil {
 		return m.Type
 	}
 	return SubscribeType_COMMAND
 }
 
-func (m *SubscribeRequest) GetPath() string {
+func (m *SubscribeRequestOrig) GetPath() string {
 	if m != nil {
 		return m.Path
 	}
@@ -588,18 +1624,18 @@ func (m *SubscribeRequest) GetPath() string {
 }
 
 type ConfigRequest struct {
-	Type      ConfigType          `protobuf:"varint,1,opt,name=type,enum=openconfig.ConfigType" json:"type,omitempty"`
-	Module    string              `protobuf:"bytes,2,opt,name=module" json:"module,omitempty"`
-	Port      uint32              `protobuf:"varint,3,opt,name=port" json:"port,omitempty"`
-	Subtype   SubscribeType       `protobuf:"varint,4,opt,name=subtype,enum=openconfig.SubscribeType" json:"subtype,omitempty"`
-	Path      []string            `protobuf:"bytes,5,rep,name=path" json:"path,omitempty"`
-	Subscribe []*SubscribeRequest `protobuf:"bytes,6,rep,name=subscribe" json:"subscribe,omitempty"`
+	Type      ConfigType              `protobuf:"varint,1,opt,name=type,enum=openconfig.ConfigType" json:"type,omitempty"`
+	Module    string                  `protobuf:"bytes,2,opt,name=module" json:"module,omitempty"`
+	Port      uint32                  `protobuf:"varint,3,opt,name=port" json:"port,omitempty"`
+	Subtype   SubscribeType           `protobuf:"varint,4,opt,name=subtype,enum=openconfig.SubscribeType" json:"subtype,omitempty"`
+	Path      []string                `protobuf:"bytes,5,rep,name=path" json:"path,omitempty"`
+	Subscribe []*SubscribeRequestOrig `protobuf:"bytes,6,rep,name=subscribe" json:"subscribe,omitempty"`
 }
 
 func (m *ConfigRequest) Reset()                    { *m = ConfigRequest{} }
 func (m *ConfigRequest) String() string            { return proto.CompactTextString(m) }
 func (*ConfigRequest) ProtoMessage()               {}
-func (*ConfigRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{11} }
+func (*ConfigRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{22} }
 
 func (m *ConfigRequest) GetType() ConfigType {
 	if m != nil {
@@ -636,7 +1672,7 @@ func (m *ConfigRequest) GetPath() []string {
 	return nil
 }
 
-func (m *ConfigRequest) GetSubscribe() []*SubscribeRequest {
+func (m *ConfigRequest) GetSubscribe() []*SubscribeRequestOrig {
 	if m != nil {
 		return m.Subscribe
 	}
@@ -653,7 +1689,7 @@ type ConfigReply struct {
 func (m *ConfigReply) Reset()                    { *m = ConfigReply{} }
 func (m *ConfigReply) String() string            { return proto.CompactTextString(m) }
 func (*ConfigReply) ProtoMessage()               {}
-func (*ConfigReply) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{12} }
+func (*ConfigReply) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{23} }
 
 func (m *ConfigReply) GetResult() int32 {
 	if m != nil {
@@ -692,7 +1728,7 @@ type ShowRequest struct {
 func (m *ShowRequest) Reset()                    { *m = ShowRequest{} }
 func (m *ShowRequest) String() string            { return proto.CompactTextString(m) }
 func (*ShowRequest) ProtoMessage()               {}
-func (*ShowRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{13} }
+func (*ShowRequest) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{24} }
 
 func (m *ShowRequest) GetLine() string {
 	if m != nil {
@@ -715,7 +1751,7 @@ type ShowReply struct {
 func (m *ShowReply) Reset()                    { *m = ShowReply{} }
 func (m *ShowReply) String() string            { return proto.CompactTextString(m) }
 func (*ShowReply) ProtoMessage()               {}
-func (*ShowReply) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{14} }
+func (*ShowReply) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{25} }
 
 func (m *ShowReply) GetStr() string {
 	if m != nil {
@@ -725,8 +1761,19 @@ func (m *ShowReply) GetStr() string {
 }
 
 func init() {
+	proto.RegisterType((*Decimal64)(nil), "openconfig.Decimal64")
+	proto.RegisterType((*ScalarArray)(nil), "openconfig.ScalarArray")
+	proto.RegisterType((*Notification)(nil), "openconfig.Notification")
+	proto.RegisterType((*TypedValue)(nil), "openconfig.TypedValue")
+	proto.RegisterType((*Update)(nil), "openconfig.Update")
+	proto.RegisterType((*SubscribeRequest)(nil), "openconfig.SubscribeRequest")
+	proto.RegisterType((*SubscribeResponse)(nil), "openconfig.SubscribeResponse")
+	proto.RegisterType((*SubscriptionList)(nil), "openconfig.SubscriptionList")
+	proto.RegisterType((*Subscription)(nil), "openconfig.Subscription")
+	proto.RegisterType((*QOSMarking)(nil), "openconfig.QOSMarking")
 	proto.RegisterType((*Path)(nil), "openconfig.Path")
 	proto.RegisterType((*PathElem)(nil), "openconfig.PathElem")
+	proto.RegisterType((*ModelData)(nil), "openconfig.ModelData")
 	proto.RegisterType((*ExecRequest)(nil), "openconfig.ExecRequest")
 	proto.RegisterType((*ExecReply)(nil), "openconfig.ExecReply")
 	proto.RegisterType((*RegisterRequest)(nil), "openconfig.RegisterRequest")
@@ -735,16 +1782,19 @@ func init() {
 	proto.RegisterType((*RegisterModuleReply)(nil), "openconfig.RegisterModuleReply")
 	proto.RegisterType((*ExecModuleRequest)(nil), "openconfig.ExecModuleRequest")
 	proto.RegisterType((*ExecModuleReply)(nil), "openconfig.ExecModuleReply")
-	proto.RegisterType((*SubscribeRequest)(nil), "openconfig.SubscribeRequest")
+	proto.RegisterType((*SubscribeRequestOrig)(nil), "openconfig.SubscribeRequestOrig")
 	proto.RegisterType((*ConfigRequest)(nil), "openconfig.ConfigRequest")
 	proto.RegisterType((*ConfigReply)(nil), "openconfig.ConfigReply")
 	proto.RegisterType((*ShowRequest)(nil), "openconfig.ShowRequest")
 	proto.RegisterType((*ShowReply)(nil), "openconfig.ShowReply")
+	proto.RegisterEnum("openconfig.Encoding", Encoding_name, Encoding_value)
+	proto.RegisterEnum("openconfig.SubscriptionMode", SubscriptionMode_name, SubscriptionMode_value)
 	proto.RegisterEnum("openconfig.ExecType", ExecType_name, ExecType_value)
 	proto.RegisterEnum("openconfig.ExecConentType", ExecConentType_name, ExecConentType_value)
 	proto.RegisterEnum("openconfig.ExecCode", ExecCode_name, ExecCode_value)
 	proto.RegisterEnum("openconfig.ConfigType", ConfigType_name, ConfigType_value)
 	proto.RegisterEnum("openconfig.SubscribeType", SubscribeType_name, SubscribeType_value)
+	proto.RegisterEnum("openconfig.SubscriptionList_Mode", SubscriptionList_Mode_name, SubscriptionList_Mode_value)
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -754,6 +1804,148 @@ var _ grpc.ClientConn
 // This is a compile-time assertion to ensure that this generated file
 // is compatible with the grpc package it is being compiled against.
 const _ = grpc.SupportPackageIsVersion4
+
+// Client API for GNMI service
+
+type GNMIClient interface {
+	// Capabilities allows the client to retrieve the set of capabilities that
+	// is supported by the target. This allows the target to validate the
+	// service version that is implemented and retrieve the set of models that
+	// the target supports. The models can then be specified in subsequent RPCs
+	// to restrict the set of data that is utilized.
+	// Reference: gNMI Specification Section 3.2
+	// rpc Capabilities(CapabilityRequest) returns (CapabilityResponse);
+	// Retrieve a snapshot of data from the target. A Get RPC requests that the
+	// target snapshots a subset of the data tree as specified by the paths
+	// included in the message and serializes this to be returned to the
+	// client using the specified encoding.
+	// Reference: gNMI Specification Section 3.3
+	// rpc Get(GetRequest) returns (GetResponse);
+	// Set allows the client to modify the state of data on the target. The
+	// paths to modified along with the new values that the client wishes
+	// to set the value to.
+	// Reference: gNMI Specification Section 3.4
+	// rpc Set(SetRequest) returns (SetResponse);
+	// Subscribe allows a client to request the target to send it values
+	// of particular paths within the data tree. These values may be streamed
+	// at a particular cadence (STREAM), sent one off on a long-lived channel
+	// (POLL), or sent as a one-off retrieval (ONCE).
+	// Reference: gNMI Specification Section 3.5
+	Subscribe(ctx context.Context, opts ...grpc.CallOption) (GNMI_SubscribeClient, error)
+}
+
+type gNMIClient struct {
+	cc *grpc.ClientConn
+}
+
+func NewGNMIClient(cc *grpc.ClientConn) GNMIClient {
+	return &gNMIClient{cc}
+}
+
+func (c *gNMIClient) Subscribe(ctx context.Context, opts ...grpc.CallOption) (GNMI_SubscribeClient, error) {
+	stream, err := grpc.NewClientStream(ctx, &_GNMI_serviceDesc.Streams[0], c.cc, "/openconfig.gNMI/Subscribe", opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &gNMISubscribeClient{stream}
+	return x, nil
+}
+
+type GNMI_SubscribeClient interface {
+	Send(*SubscribeRequest) error
+	Recv() (*SubscribeResponse, error)
+	grpc.ClientStream
+}
+
+type gNMISubscribeClient struct {
+	grpc.ClientStream
+}
+
+func (x *gNMISubscribeClient) Send(m *SubscribeRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *gNMISubscribeClient) Recv() (*SubscribeResponse, error) {
+	m := new(SubscribeResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// Server API for GNMI service
+
+type GNMIServer interface {
+	// Capabilities allows the client to retrieve the set of capabilities that
+	// is supported by the target. This allows the target to validate the
+	// service version that is implemented and retrieve the set of models that
+	// the target supports. The models can then be specified in subsequent RPCs
+	// to restrict the set of data that is utilized.
+	// Reference: gNMI Specification Section 3.2
+	// rpc Capabilities(CapabilityRequest) returns (CapabilityResponse);
+	// Retrieve a snapshot of data from the target. A Get RPC requests that the
+	// target snapshots a subset of the data tree as specified by the paths
+	// included in the message and serializes this to be returned to the
+	// client using the specified encoding.
+	// Reference: gNMI Specification Section 3.3
+	// rpc Get(GetRequest) returns (GetResponse);
+	// Set allows the client to modify the state of data on the target. The
+	// paths to modified along with the new values that the client wishes
+	// to set the value to.
+	// Reference: gNMI Specification Section 3.4
+	// rpc Set(SetRequest) returns (SetResponse);
+	// Subscribe allows a client to request the target to send it values
+	// of particular paths within the data tree. These values may be streamed
+	// at a particular cadence (STREAM), sent one off on a long-lived channel
+	// (POLL), or sent as a one-off retrieval (ONCE).
+	// Reference: gNMI Specification Section 3.5
+	Subscribe(GNMI_SubscribeServer) error
+}
+
+func RegisterGNMIServer(s *grpc.Server, srv GNMIServer) {
+	s.RegisterService(&_GNMI_serviceDesc, srv)
+}
+
+func _GNMI_Subscribe_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(GNMIServer).Subscribe(&gNMISubscribeServer{stream})
+}
+
+type GNMI_SubscribeServer interface {
+	Send(*SubscribeResponse) error
+	Recv() (*SubscribeRequest, error)
+	grpc.ServerStream
+}
+
+type gNMISubscribeServer struct {
+	grpc.ServerStream
+}
+
+func (x *gNMISubscribeServer) Send(m *SubscribeResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *gNMISubscribeServer) Recv() (*SubscribeRequest, error) {
+	m := new(SubscribeRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+var _GNMI_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "openconfig.gNMI",
+	HandlerType: (*GNMIServer)(nil),
+	Methods:     []grpc.MethodDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Subscribe",
+			Handler:       _GNMI_Subscribe_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+	},
+	Metadata: "openconfig.proto",
+}
 
 // Client API for Exec service
 
@@ -1170,77 +2362,135 @@ var _Show_serviceDesc = grpc.ServiceDesc{
 func init() { proto.RegisterFile("openconfig.proto", fileDescriptor0) }
 
 var fileDescriptor0 = []byte{
-	// 1144 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x56, 0xcb, 0x72, 0xe3, 0x44,
-	0x14, 0xb5, 0x6c, 0xf9, 0x75, 0x3d, 0x4e, 0x3a, 0x3d, 0x79, 0x38, 0x4e, 0x02, 0x41, 0x0b, 0xca,
-	0xe5, 0xaa, 0xc9, 0x4c, 0x65, 0x06, 0x8a, 0x4a, 0x15, 0x0b, 0x47, 0x56, 0x32, 0x02, 0x5b, 0x0e,
-	0x92, 0x0c, 0x81, 0x8d, 0x4b, 0xb1, 0x1b, 0xc7, 0x8c, 0x2c, 0x19, 0x49, 0x1e, 0xf0, 0x06, 0x96,
-	0xfc, 0x0c, 0x7f, 0xc1, 0x8f, 0x50, 0xc5, 0x96, 0x8f, 0xa0, 0xba, 0xa5, 0xd6, 0xc3, 0xf1, 0x24,
-	0xac, 0xd2, 0xf7, 0xea, 0xf6, 0xe9, 0x73, 0xce, 0xed, 0xbe, 0x31, 0x20, 0x77, 0x41, 0x9c, 0xb1,
-	0xeb, 0xfc, 0x38, 0x9b, 0x9e, 0x2d, 0x3c, 0x37, 0x70, 0x31, 0x24, 0x19, 0xe9, 0x37, 0x10, 0x6f,
-	0xac, 0xe0, 0x1e, 0x1f, 0x43, 0x99, 0xd8, 0x64, 0x4e, 0x9c, 0xa0, 0x21, 0x9c, 0x16, 0x5a, 0xd5,
-	0xcb, 0x7c, 0x43, 0xd0, 0x79, 0x0a, 0xef, 0x43, 0xc9, 0xf5, 0x66, 0xd3, 0x99, 0xd3, 0xc8, 0x9f,
-	0x0a, 0xad, 0xaa, 0x1e, 0x45, 0xb8, 0x05, 0x22, 0x2d, 0x69, 0x14, 0x4e, 0x0b, 0xad, 0xda, 0xf9,
-	0xee, 0x59, 0xea, 0x28, 0x8a, 0xaa, 0xd8, 0x64, 0xae, 0xb3, 0x0a, 0x8a, 0x10, 0x58, 0xde, 0x94,
-	0x04, 0x0d, 0x31, 0x44, 0x08, 0x23, 0xe9, 0x0f, 0x01, 0x2a, 0xbc, 0x14, 0x63, 0x10, 0x1d, 0x6b,
-	0x4e, 0x1a, 0x02, 0x2b, 0x61, 0x6b, 0xfc, 0x12, 0x0a, 0xef, 0xc8, 0xaa, 0x91, 0x67, 0x27, 0x9c,
-	0x6c, 0x3a, 0xe1, 0xec, 0x6b, 0xb2, 0x52, 0x9c, 0xc0, 0x5b, 0xe9, 0xb4, 0xb2, 0xf9, 0x39, 0x54,
-	0x78, 0x02, 0xa3, 0x70, 0x73, 0x88, 0x47, 0x97, 0x78, 0x17, 0x8a, 0xef, 0x2d, 0x7b, 0x49, 0x22,
-	0x21, 0x61, 0x70, 0x91, 0xff, 0x42, 0x90, 0xfe, 0x11, 0xa0, 0xa6, 0xfc, 0x4a, 0xc6, 0x3a, 0xf9,
-	0x79, 0x49, 0xfc, 0x80, 0x6a, 0x0b, 0x56, 0x8b, 0x90, 0xcc, 0x56, 0x56, 0x1b, 0x2d, 0x33, 0x57,
-	0x0b, 0xa2, 0xb3, 0x0a, 0x4a, 0x7b, 0xee, 0x4e, 0x38, 0x24, 0x5b, 0xe3, 0x63, 0xa8, 0x2e, 0xbc,
-	0xd9, 0xfb, 0x99, 0x4d, 0xa6, 0xa4, 0x51, 0x38, 0x15, 0x5a, 0x75, 0x3d, 0x49, 0xd0, 0x1d, 0xf6,
-	0xcc, 0x21, 0x91, 0x17, 0x6c, 0x8d, 0x9b, 0x50, 0x19, 0xbb, 0xf3, 0xb9, 0xe5, 0x4c, 0xfc, 0x46,
-	0x91, 0xb6, 0x40, 0x8f, 0x63, 0x5a, 0x6f, 0x79, 0x53, 0xbf, 0x51, 0x62, 0x79, 0xb6, 0xc6, 0x6f,
-	0xa0, 0x3c, 0x76, 0x9d, 0x80, 0x76, 0xac, 0xcc, 0x28, 0x36, 0xd7, 0x29, 0xca, 0xae, 0x43, 0x9c,
-	0x80, 0x11, 0xe5, 0xa5, 0xd2, 0xef, 0x50, 0x0d, 0x45, 0x2e, 0xec, 0x15, 0x95, 0x38, 0xa6, 0xc4,
-	0x3f, 0x20, 0x51, 0x76, 0x27, 0x44, 0x67, 0x15, 0xd4, 0x36, 0x4a, 0xd2, 0xe7, 0xb6, 0xb1, 0x80,
-	0xd2, 0x5a, 0xb8, 0x5e, 0x10, 0xe9, 0x63, 0x6b, 0xfc, 0x11, 0xc0, 0xd8, 0x72, 0x26, 0xb3, 0x89,
-	0x15, 0x10, 0xbf, 0x21, 0x32, 0xc2, 0xa9, 0x8c, 0xf4, 0x97, 0x00, 0xdb, 0x3a, 0x99, 0xce, 0xfc,
-	0x80, 0x78, 0xdc, 0xea, 0x4d, 0x7d, 0xdf, 0x87, 0xd2, 0xdc, 0x9d, 0x2c, 0x6d, 0x6e, 0x6b, 0x14,
-	0xc5, 0x66, 0x17, 0x52, 0x66, 0x6f, 0xb2, 0x33, 0xd3, 0x80, 0xe2, 0x7a, 0x03, 0x76, 0xa1, 0x78,
-	0x4f, 0xec, 0x05, 0x77, 0x34, 0x0c, 0x62, 0x3f, 0xca, 0x4f, 0xf9, 0x21, 0xbd, 0x84, 0x7a, 0x22,
-	0x82, 0x5a, 0xc9, 0x64, 0xdb, 0xf6, 0x9d, 0x35, 0x7e, 0x37, 0x9b, 0x30, 0x21, 0x45, 0x3d, 0x95,
-	0x91, 0x64, 0xd8, 0xe3, 0x1b, 0xfa, 0x4c, 0x08, 0xd7, 0x9e, 0xe8, 0x14, 0xd6, 0x75, 0x32, 0x6f,
-	0xa3, 0x4b, 0x45, 0xd7, 0xd2, 0x0b, 0x78, 0xbe, 0x0e, 0x42, 0xcf, 0xde, 0x87, 0x92, 0x47, 0xfc,
-	0xa5, 0x1d, 0x44, 0xe7, 0x46, 0x91, 0x74, 0x0d, 0x3b, 0x94, 0x76, 0xf6, 0xbc, 0x27, 0x88, 0xc6,
-	0x57, 0x2d, 0x9f, 0x5c, 0x35, 0xe9, 0x4b, 0xd8, 0x4e, 0x03, 0x3d, 0x72, 0x66, 0xdc, 0x8a, 0x7c,
-	0xd2, 0x0a, 0x69, 0x08, 0xc8, 0x58, 0xde, 0xf9, 0x63, 0x6f, 0x76, 0x17, 0xd3, 0x78, 0x91, 0x79,
-	0x5d, 0x87, 0x69, 0xab, 0xe3, 0xda, 0xec, 0x13, 0x5b, 0x58, 0xc1, 0x7d, 0xec, 0x86, 0x15, 0xdc,
-	0x4b, 0xff, 0x0a, 0x50, 0x97, 0xd9, 0x16, 0x0e, 0xda, 0xce, 0x80, 0xee, 0xa7, 0x41, 0xc3, 0xc2,
-	0x14, 0xe2, 0x23, 0xf7, 0xeb, 0xc1, 0x9d, 0x7e, 0x0d, 0x65, 0x7f, 0x79, 0xc7, 0xa0, 0xc5, 0xa7,
-	0xf8, 0xf2, 0xca, 0x98, 0x72, 0xf8, 0x96, 0xd9, 0x1a, 0x5f, 0x40, 0xd5, 0xe7, 0xd5, 0xec, 0xea,
-	0xd5, 0xce, 0x8f, 0x37, 0x42, 0x45, 0x8a, 0xf4, 0xa4, 0x5c, 0x5a, 0x41, 0x8d, 0xab, 0x7d, 0xac,
-	0x01, 0xdc, 0x83, 0xfc, 0xff, 0xf0, 0x80, 0x53, 0x2c, 0xa4, 0x28, 0x62, 0x10, 0x7f, 0xf2, 0x5d,
-	0x87, 0xbf, 0x25, 0xba, 0x96, 0x3e, 0x83, 0x9a, 0x71, 0xef, 0xfe, 0x92, 0x7a, 0xae, 0xac, 0xc7,
-	0x42, 0xea, 0xb9, 0xf1, 0x6d, 0xf4, 0xd8, 0x4a, 0xb4, 0xed, 0x04, 0xaa, 0xe1, 0x36, 0xca, 0x17,
-	0x41, 0xc1, 0x0f, 0x3c, 0x3e, 0x8a, 0xfd, 0xc0, 0x6b, 0x7b, 0x50, 0xe1, 0x83, 0x14, 0x57, 0x40,
-	0x54, 0x6e, 0x15, 0x19, 0xe5, 0xf0, 0x33, 0xa8, 0xc8, 0x83, 0xfe, 0x4d, 0x4f, 0x31, 0x15, 0x24,
-	0xe0, 0x23, 0x38, 0xe0, 0xd1, 0xc8, 0xd4, 0x3b, 0x6a, 0x4f, 0xd5, 0xae, 0x47, 0xc6, 0x4d, 0x47,
-	0x56, 0x50, 0x3e, 0xf3, 0xf1, 0x4a, 0xd5, 0x0d, 0x73, 0x24, 0x0f, 0xfa, 0xfd, 0x8e, 0xd6, 0x35,
-	0x50, 0x01, 0xef, 0x02, 0x8a, 0x3f, 0x76, 0xbf, 0xd7, 0x3a, 0x7d, 0x55, 0x46, 0x62, 0xfb, 0x0d,
-	0x6c, 0x65, 0x27, 0x23, 0x46, 0xf0, 0x4c, 0x1e, 0x68, 0xa6, 0xa2, 0x99, 0x23, 0x53, 0xb9, 0x35,
-	0x51, 0x2e, 0x9d, 0xf9, 0xca, 0x18, 0x68, 0x48, 0x68, 0x3b, 0x21, 0x53, 0xfa, 0xfe, 0x71, 0x0d,
-	0xca, 0xc6, 0x50, 0x96, 0x15, 0xc3, 0x40, 0x39, 0x1a, 0x68, 0x83, 0x7e, 0xc7, 0x94, 0xdf, 0x22,
-	0x01, 0x6f, 0x01, 0xa8, 0x5a, 0xcc, 0x3d, 0x8f, 0xeb, 0x50, 0xed, 0xf4, 0x2f, 0xd5, 0xeb, 0xe1,
-	0x60, 0x48, 0x09, 0x55, 0x40, 0x34, 0xde, 0x0e, 0xbe, 0x43, 0x22, 0x95, 0xa8, 0x2b, 0x5d, 0x55,
-	0x57, 0x64, 0x13, 0x15, 0xf1, 0x0e, 0xd4, 0x79, 0x34, 0x62, 0x05, 0xa5, 0xf6, 0xdf, 0x02, 0x40,
-	0xd2, 0x2c, 0x5c, 0x86, 0x82, 0xa1, 0x50, 0x66, 0x00, 0xa5, 0xae, 0x12, 0x39, 0x83, 0x61, 0xeb,
-	0xdb, 0x4e, 0x4f, 0xed, 0x76, 0x4c, 0x65, 0x64, 0x98, 0x1d, 0xdd, 0x44, 0x79, 0xca, 0x3c, 0xce,
-	0x29, 0x5a, 0x37, 0x74, 0x21, 0xa9, 0x8a, 0x68, 0x8b, 0xf8, 0x39, 0x6c, 0xc7, 0xd9, 0xab, 0x8e,
-	0xda, 0x53, 0xba, 0xa8, 0x18, 0xca, 0xee, 0xf7, 0x55, 0x33, 0x82, 0x2b, 0x51, 0x41, 0x51, 0x86,
-	0x82, 0x95, 0xa9, 0x20, 0x63, 0x78, 0x69, 0xc8, 0xba, 0x7a, 0xa9, 0xa0, 0x0a, 0x45, 0x89, 0xc3,
-	0x51, 0x7f, 0xd8, 0x33, 0x55, 0x54, 0xc5, 0x7b, 0xb0, 0x93, 0x24, 0x75, 0xe5, 0x9b, 0xa1, 0x62,
-	0x98, 0x08, 0xf0, 0x36, 0xd4, 0xa8, 0x97, 0x23, 0x79, 0xa0, 0x5d, 0xa9, 0xd7, 0xa8, 0xd6, 0xfe,
-	0x14, 0xea, 0x99, 0x77, 0x43, 0xad, 0x8c, 0xba, 0x87, 0x72, 0xd4, 0xab, 0xd0, 0xfa, 0xf3, 0x4b,
-	0x10, 0xa9, 0xf5, 0xf8, 0x02, 0x4a, 0x5d, 0x97, 0xad, 0x0e, 0xd6, 0xc7, 0x72, 0x74, 0x2d, 0x9b,
-	0x7b, 0x0f, 0x3f, 0x2c, 0xec, 0x95, 0x94, 0x3b, 0xff, 0x53, 0x80, 0x0a, 0x9f, 0x9b, 0xf8, 0x0a,
-	0xa0, 0xeb, 0xc6, 0xd1, 0x51, 0x7a, 0xcf, 0xda, 0xbf, 0xa5, 0xe6, 0xe1, 0xe6, 0x8f, 0x0c, 0x14,
-	0xdf, 0x02, 0x4a, 0x70, 0xc2, 0xc9, 0x88, 0x3f, 0xd9, 0xb4, 0x21, 0x33, 0x7e, 0x9b, 0x1f, 0x3f,
-	0x56, 0x12, 0xd2, 0xfd, 0x01, 0x20, 0x99, 0xb6, 0xb8, 0x07, 0xcf, 0x42, 0xe1, 0x51, 0x7c, 0xb2,
-	0xae, 0x32, 0x8b, 0x7f, 0xf4, 0xa1, 0xcf, 0x21, 0xb6, 0x06, 0xa5, 0xf0, 0x62, 0xe1, 0x2e, 0x54,
-	0xba, 0x6e, 0xb4, 0x3e, 0x7c, 0x38, 0x25, 0x38, 0xde, 0xc1, 0xa6, 0x4f, 0x0c, 0xab, 0x25, 0xbc,
-	0x62, 0xed, 0xa1, 0x4f, 0x1c, 0x5f, 0x44, 0x7f, 0x33, 0xe5, 0xa9, 0x99, 0x91, 0x6d, 0x4e, 0x3c,
-	0x15, 0xa4, 0xdc, 0x2b, 0xe1, 0xae, 0xc4, 0x7e, 0x95, 0xbe, 0xfe, 0x2f, 0x00, 0x00, 0xff, 0xff,
-	0x36, 0xff, 0x32, 0x13, 0xa9, 0x0a, 0x00, 0x00,
+	// 2072 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x58, 0xdd, 0x6e, 0xdb, 0xc8,
+	0x15, 0x16, 0xf5, 0xcf, 0x23, 0xd9, 0xa1, 0x67, 0x9d, 0x44, 0x71, 0x92, 0xae, 0x43, 0x6c, 0xb7,
+	0x82, 0x17, 0xc9, 0x06, 0xde, 0xec, 0x62, 0x11, 0xa4, 0x2d, 0x68, 0x89, 0xb6, 0xd9, 0x5a, 0x52,
+	0x76, 0x48, 0xa7, 0x49, 0x8b, 0x42, 0xa0, 0xa5, 0xb1, 0xcc, 0x86, 0x22, 0xb5, 0x24, 0x95, 0x8d,
+	0xf6, 0xa2, 0xbd, 0xec, 0x83, 0xf4, 0xb6, 0x4f, 0xd1, 0xbe, 0x46, 0x2f, 0x0a, 0xf4, 0xba, 0x40,
+	0x1f, 0xa1, 0x38, 0x33, 0x1c, 0x8a, 0x52, 0x64, 0x67, 0xaf, 0x3c, 0xe7, 0x97, 0xdf, 0xf9, 0x9b,
+	0x33, 0x16, 0x68, 0xe1, 0x8c, 0x05, 0xa3, 0x30, 0xb8, 0xf4, 0x26, 0x4f, 0x66, 0x51, 0x98, 0x84,
+	0x04, 0x96, 0x1c, 0xdd, 0x00, 0xb5, 0xcb, 0x46, 0xde, 0xd4, 0xf5, 0xbf, 0x79, 0x46, 0xee, 0x40,
+	0x75, 0xec, 0x4d, 0xbc, 0x24, 0x6e, 0x29, 0xfb, 0x4a, 0xbb, 0x44, 0x53, 0x8a, 0x3c, 0x00, 0x75,
+	0x16, 0xb1, 0x91, 0x17, 0x7b, 0x61, 0xd0, 0x2a, 0xee, 0x2b, 0xed, 0x2d, 0xba, 0x64, 0xe8, 0xbf,
+	0x86, 0x86, 0x3d, 0x72, 0x7d, 0x37, 0x32, 0xa2, 0xc8, 0x5d, 0x90, 0xa7, 0x50, 0x63, 0x3e, 0x9b,
+	0xb2, 0x20, 0x69, 0x29, 0xfb, 0xa5, 0x76, 0xe3, 0xf0, 0xce, 0x93, 0x1c, 0x02, 0x67, 0x31, 0x63,
+	0xe3, 0x57, 0xae, 0x3f, 0x67, 0x54, 0xaa, 0xe9, 0xff, 0x50, 0xa0, 0xd9, 0x0f, 0x13, 0xef, 0xd2,
+	0x1b, 0xb9, 0x89, 0x17, 0x06, 0xf8, 0xbd, 0xc4, 0x9b, 0xb2, 0x38, 0x71, 0xa7, 0xb3, 0x14, 0xca,
+	0x92, 0x41, 0xda, 0x50, 0x9d, 0x45, 0xec, 0xd2, 0x7b, 0xcf, 0xa1, 0x34, 0x0e, 0xb5, 0xbc, 0xff,
+	0x97, 0x6e, 0x72, 0x45, 0x53, 0x39, 0xd9, 0x85, 0x8a, 0xeb, 0x7b, 0x6e, 0xdc, 0x2a, 0xed, 0x2b,
+	0x6d, 0x95, 0x0a, 0x82, 0x1c, 0x40, 0x75, 0x3e, 0x1b, 0xbb, 0x09, 0x6b, 0x95, 0x39, 0x3e, 0x92,
+	0xb7, 0x3f, 0xe7, 0x12, 0x9a, 0x6a, 0xe0, 0xb7, 0xc6, 0xcc, 0x67, 0x09, 0x6b, 0x55, 0xb8, 0xee,
+	0x86, 0x6f, 0x09, 0xb9, 0xfe, 0xb7, 0x12, 0xc0, 0x32, 0x38, 0xf2, 0x29, 0x40, 0x9c, 0x44, 0x5e,
+	0x30, 0x19, 0xbe, 0x73, 0x7d, 0x1e, 0x83, 0x7a, 0x5a, 0xa0, 0xaa, 0xe0, 0xbd, 0x72, 0x7d, 0x72,
+	0x0f, 0x6a, 0x5e, 0x90, 0x70, 0x29, 0x86, 0x51, 0x3a, 0x2d, 0xd0, 0xaa, 0x17, 0x24, 0x28, 0xba,
+	0x0f, 0xf5, 0xb9, 0x94, 0x21, 0xf2, 0xf2, 0x69, 0x81, 0xd6, 0xe6, 0x4b, 0xe1, 0x45, 0x18, 0xfa,
+	0x5c, 0x58, 0xde, 0x57, 0xda, 0x75, 0x14, 0x22, 0x07, 0x85, 0x0f, 0x41, 0xbd, 0x58, 0x24, 0x2c,
+	0xe6, 0xd2, 0xca, 0xbe, 0xd2, 0x6e, 0x9e, 0x16, 0x68, 0x9d, 0xb3, 0x52, 0xf1, 0xa5, 0x1f, 0xba,
+	0xc2, 0x73, 0x75, 0x5f, 0x69, 0x17, 0x51, 0xcc, 0x59, 0x28, 0xfe, 0x16, 0x1a, 0x63, 0xd1, 0x0b,
+	0x5c, 0xa1, 0xc6, 0xb3, 0x7b, 0x3b, 0x1f, 0x71, 0xd6, 0x2a, 0xa7, 0x05, 0x0a, 0xa9, 0x2e, 0x5a,
+	0xbe, 0x80, 0xa6, 0xcf, 0xdc, 0x4b, 0xdf, 0x8b, 0x85, 0xef, 0x3a, 0x37, 0xbd, 0x9b, 0x37, 0xcd,
+	0xb5, 0xc8, 0x69, 0x81, 0x36, 0xa4, 0x7a, 0x1a, 0xd2, 0x9f, 0xe2, 0x30, 0xe0, 0x96, 0x90, 0x82,
+	0xae, 0x21, 0x07, 0x85, 0x9f, 0xc1, 0x16, 0x17, 0x7a, 0x2c, 0xb9, 0xe4, 0x1a, 0x8d, 0x54, 0xa3,
+	0x81, 0x6c, 0x8b, 0x25, 0x97, 0x69, 0x64, 0x6e, 0x3c, 0xf2, 0x3c, 0xae, 0xd1, 0x4c, 0xb3, 0x5d,
+	0xe7, 0xac, 0x57, 0xae, 0x7f, 0x54, 0x83, 0xca, 0x3b, 0x2c, 0x8b, 0xfe, 0x1e, 0xaa, 0xa2, 0xc2,
+	0xe4, 0x33, 0x28, 0xcf, 0xdc, 0xe4, 0x8a, 0x97, 0x66, 0x53, 0x5d, 0xb9, 0x94, 0xb4, 0xa1, 0x24,
+	0xab, 0x70, 0x7d, 0x23, 0xa3, 0x0a, 0xf9, 0x19, 0xc0, 0x78, 0x3e, 0xf3, 0xb1, 0x85, 0x59, 0xcc,
+	0x2b, 0xb3, 0x45, 0x73, 0x1c, 0xfd, 0x0f, 0xa0, 0xd9, 0xf3, 0x8b, 0x78, 0x14, 0x79, 0x17, 0x8c,
+	0xb2, 0xef, 0xe7, 0x2c, 0x4e, 0xc8, 0x0b, 0x50, 0x63, 0xc9, 0x4b, 0x81, 0x3c, 0x58, 0xc9, 0x99,
+	0x10, 0xce, 0x70, 0x28, 0xce, 0xbc, 0x38, 0xe1, 0x1d, 0x24, 0x0d, 0x8e, 0x54, 0xa8, 0x45, 0xc2,
+	0x91, 0xfe, 0x23, 0xec, 0xe4, 0x9c, 0xc7, 0xb3, 0x30, 0x88, 0x19, 0x39, 0xcc, 0xfa, 0x5c, 0xb8,
+	0x6e, 0xe5, 0x5d, 0xe7, 0xe7, 0x0d, 0x5b, 0x2f, 0xed, 0xf7, 0x9f, 0xc3, 0x56, 0xbc, 0x08, 0x46,
+	0xc3, 0x28, 0x75, 0xc2, 0x23, 0xc7, 0x16, 0x6b, 0x22, 0x5b, 0xba, 0x3e, 0x02, 0xa8, 0x4b, 0x0d,
+	0xfd, 0x5f, 0xa5, 0x2c, 0xb2, 0x0c, 0x68, 0x6e, 0x46, 0x95, 0x8f, 0xcc, 0xe8, 0x0b, 0x68, 0xc6,
+	0x39, 0xeb, 0x56, 0x91, 0xcf, 0x59, 0xeb, 0xba, 0x34, 0xd0, 0x15, 0x6d, 0xf2, 0x29, 0x34, 0xe6,
+	0x31, 0x1b, 0xf2, 0xc1, 0x66, 0x62, 0xce, 0xeb, 0x14, 0xe6, 0x31, 0x33, 0x04, 0x07, 0x0b, 0xf8,
+	0x7d, 0x28, 0xea, 0xb1, 0x56, 0xc0, 0xef, 0x06, 0x76, 0xcf, 0x8d, 0xde, 0x7a, 0xc1, 0x84, 0xa2,
+	0x0a, 0xf9, 0x1a, 0xca, 0xd3, 0x70, 0xcc, 0xf8, 0xd8, 0x6c, 0x1f, 0x3e, 0xba, 0xa9, 0x0e, 0x4f,
+	0x7a, 0xe1, 0x98, 0x51, 0xae, 0x4e, 0xbe, 0x80, 0x1d, 0xd7, 0xf7, 0xc3, 0x1f, 0x86, 0xee, 0x64,
+	0x12, 0xb1, 0x09, 0x4f, 0x28, 0x9f, 0xad, 0x3a, 0xd5, 0xb8, 0xc0, 0x58, 0xf2, 0xc9, 0x33, 0x40,
+	0x6c, 0x43, 0x34, 0xf4, 0xe3, 0x56, 0x8d, 0x87, 0xba, 0x32, 0x60, 0xe8, 0xd8, 0xef, 0xba, 0x89,
+	0x4b, 0xd5, 0x79, 0xcc, 0x38, 0x15, 0x93, 0xa7, 0x50, 0x47, 0x85, 0xb1, 0x17, 0x4c, 0xf8, 0x64,
+	0x6d, 0x1f, 0xee, 0xe6, 0x6d, 0xcc, 0x54, 0x46, 0x33, 0x2d, 0xf2, 0x08, 0x9a, 0xa2, 0xa0, 0xf1,
+	0x30, 0x0c, 0xfc, 0x45, 0x4b, 0xe5, 0x78, 0x1a, 0x29, 0x6f, 0x10, 0xf8, 0x0b, 0xfd, 0x73, 0x28,
+	0xa3, 0x7b, 0x02, 0x50, 0xb5, 0x1d, 0x6a, 0x1a, 0x3d, 0xad, 0x40, 0xea, 0x50, 0x1e, 0xf4, 0x3b,
+	0xa6, 0xa6, 0xe0, 0xe9, 0xe5, 0xe0, 0xec, 0x4c, 0x2b, 0xea, 0xff, 0x55, 0xa0, 0x99, 0x8f, 0xff,
+	0x27, 0x0e, 0xce, 0xd3, 0x34, 0x9b, 0x45, 0x8e, 0xf7, 0xda, 0xae, 0xce, 0x25, 0xf2, 0x17, 0x70,
+	0x2b, 0x76, 0xa7, 0x33, 0x9f, 0x0d, 0xbd, 0x20, 0x61, 0x51, 0x76, 0xf9, 0xd1, 0x6d, 0xc1, 0xb6,
+	0x52, 0x2e, 0x79, 0x0c, 0x24, 0x9e, 0xcf, 0x66, 0x11, 0x8b, 0xe3, 0x61, 0xc4, 0xc6, 0xf3, 0x60,
+	0xec, 0x06, 0x89, 0xb8, 0x0b, 0xe9, 0x8e, 0x94, 0x50, 0x29, 0x40, 0xf5, 0x2b, 0xe6, 0x46, 0xc9,
+	0x05, 0x73, 0x93, 0xa5, 0xeb, 0x0a, 0x77, 0xbd, 0x93, 0x49, 0xa4, 0x77, 0xfd, 0x73, 0x80, 0x65,
+	0x67, 0x90, 0x16, 0xd4, 0xa6, 0xe2, 0xc8, 0xe3, 0xdd, 0xa2, 0x92, 0xd4, 0xff, 0x0c, 0x65, 0x0c,
+	0x97, 0x3c, 0x58, 0x5d, 0x77, 0xea, 0x51, 0xb1, 0xa5, 0x64, 0xab, 0x0d, 0x37, 0x6a, 0x18, 0x79,
+	0x13, 0x4f, 0xac, 0x4d, 0x95, 0xa6, 0x14, 0x69, 0x43, 0x19, 0x55, 0x5a, 0x25, 0xde, 0x02, 0xbb,
+	0xeb, 0x49, 0x34, 0x7d, 0x36, 0xa5, 0x5c, 0x03, 0x3d, 0x24, 0x6e, 0x34, 0x61, 0x22, 0x42, 0x95,
+	0xa6, 0x94, 0xfe, 0x57, 0x05, 0xea, 0x52, 0x95, 0x10, 0x28, 0x07, 0xee, 0x54, 0x0c, 0xba, 0x4a,
+	0xf9, 0x99, 0x7c, 0x09, 0xa5, 0xb7, 0x6c, 0x91, 0xce, 0xd3, 0xc3, 0x4d, 0x5f, 0x78, 0xf2, 0x5b,
+	0xb6, 0x30, 0x83, 0x24, 0x5a, 0x50, 0xd4, 0xdc, 0xfb, 0x06, 0xea, 0x92, 0x41, 0x34, 0x61, 0x2c,
+	0xfc, 0xe1, 0x11, 0x77, 0x29, 0xbf, 0x42, 0xd3, 0x40, 0x04, 0xf1, 0xbc, 0xf8, 0xad, 0xa2, 0xff,
+	0x11, 0xd4, 0xac, 0x6d, 0x37, 0x22, 0xd1, 0xa1, 0x19, 0x46, 0x13, 0x37, 0xf0, 0x7e, 0x74, 0x13,
+	0xf9, 0x82, 0x50, 0xe9, 0x0a, 0x0f, 0x13, 0xfd, 0x8e, 0x45, 0xfc, 0x81, 0x21, 0x96, 0xb5, 0x24,
+	0xf5, 0xff, 0x28, 0xd0, 0x30, 0xdf, 0xb3, 0x91, 0xbc, 0x34, 0xdb, 0x50, 0x4e, 0x16, 0x33, 0xf1,
+	0x85, 0xf5, 0x49, 0x78, 0xcf, 0x46, 0x78, 0x2f, 0x53, 0xae, 0x81, 0x58, 0xb2, 0x1e, 0x54, 0xd3,
+	0x2e, 0xe3, 0x4f, 0x19, 0xef, 0x9d, 0xe7, 0xb3, 0x89, 0xb8, 0xdc, 0xf8, 0x53, 0x26, 0x65, 0xa0,
+	0x85, 0xef, 0x05, 0x2c, 0x4d, 0x35, 0x3f, 0x93, 0x3d, 0xa8, 0x8f, 0xc2, 0xe9, 0xd4, 0x0d, 0xc6,
+	0x31, 0x7f, 0x04, 0xa8, 0x34, 0xa3, 0x51, 0xdf, 0x8d, 0x26, 0x71, 0xab, 0xca, 0xf9, 0xfc, 0x4c,
+	0x9e, 0x41, 0x6d, 0x14, 0x06, 0x09, 0x36, 0x44, 0x8d, 0x43, 0xdc, 0x5b, 0x87, 0xd8, 0x09, 0x03,
+	0x16, 0x24, 0x1c, 0xa8, 0x54, 0xd5, 0xff, 0x02, 0xaa, 0x08, 0x72, 0xe6, 0x2f, 0x30, 0xc4, 0x11,
+	0x02, 0xbf, 0x26, 0xc4, 0x0e, 0x1f, 0x1a, 0xd4, 0xc0, 0xaa, 0x20, 0xc8, 0x58, 0x56, 0x85, 0x13,
+	0x08, 0x6b, 0x16, 0x46, 0x49, 0x1a, 0x1f, 0x3f, 0xe3, 0x7e, 0x1a, 0xb9, 0xc1, 0xd8, 0x1b, 0xa7,
+	0xfb, 0x09, 0x01, 0xe7, 0x38, 0xfa, 0x3f, 0x15, 0xb8, 0x45, 0xd9, 0xc4, 0x8b, 0x13, 0x16, 0xc9,
+	0x54, 0x6f, 0x2a, 0xe6, 0x1d, 0xa8, 0x4e, 0xc3, 0xf1, 0xdc, 0x97, 0x69, 0x4d, 0xa9, 0x2c, 0xd9,
+	0xa5, 0x5c, 0xb2, 0x37, 0xa5, 0x73, 0xa5, 0x00, 0x95, 0xf5, 0x02, 0xec, 0x42, 0xe5, 0x8a, 0xf9,
+	0x33, 0x99, 0x51, 0x41, 0x64, 0xf9, 0xa8, 0x7d, 0x2c, 0x1f, 0xfa, 0x97, 0xb0, 0xb5, 0x0c, 0x02,
+	0x53, 0xc9, 0xc3, 0xf6, 0xfd, 0x0b, 0x77, 0xf4, 0xd6, 0x1b, 0xf3, 0x40, 0x2a, 0x34, 0xc7, 0xd1,
+	0x3b, 0x70, 0x5b, 0x1a, 0xf4, 0x78, 0x20, 0x32, 0xf6, 0x65, 0x9c, 0xca, 0x7a, 0x9c, 0x3c, 0xb7,
+	0x69, 0x53, 0xe1, 0x59, 0x7f, 0x0c, 0x9f, 0xac, 0x3b, 0xc1, 0x6f, 0xdf, 0x81, 0x6a, 0xc4, 0xe2,
+	0xb9, 0x9f, 0xa4, 0xdf, 0x4d, 0x29, 0xfd, 0x04, 0x76, 0x10, 0xf6, 0xea, 0xf7, 0x3e, 0x02, 0x34,
+	0x6b, 0xb5, 0xe2, 0xb2, 0xd5, 0xf4, 0x5f, 0xc2, 0xad, 0xbc, 0xa3, 0x1b, 0xbe, 0x99, 0x95, 0xa2,
+	0xb8, 0x2c, 0x85, 0xfe, 0x06, 0x76, 0xd7, 0x9f, 0x24, 0x83, 0xc8, 0x9b, 0x90, 0xc7, 0x2b, 0x13,
+	0x76, 0x6f, 0xc3, 0xdd, 0x7d, 0xc1, 0x56, 0xc7, 0x8c, 0x2f, 0x04, 0x99, 0x11, 0x37, 0xb9, 0xd2,
+	0xff, 0xa7, 0xc0, 0x56, 0x87, 0x9b, 0xc8, 0xf8, 0x0e, 0x56, 0x9c, 0xae, 0x6c, 0x62, 0xa1, 0x98,
+	0xf3, 0x78, 0x43, 0x8f, 0x7d, 0xd0, 0xd7, 0x5f, 0x41, 0x2d, 0x9e, 0x5f, 0x70, 0xd7, 0xe5, 0x8f,
+	0xe1, 0x95, 0x9a, 0x19, 0x64, 0x31, 0xcf, 0x62, 0x63, 0xfd, 0x2a, 0xff, 0x18, 0xab, 0xf2, 0x5b,
+	0x73, 0x7f, 0xa3, 0xab, 0x5c, 0xaa, 0x72, 0xcf, 0x31, 0x7d, 0x01, 0x0d, 0x19, 0xf1, 0x4d, 0x85,
+	0x90, 0x79, 0x28, 0xfe, 0x84, 0x3c, 0x48, 0x98, 0xa5, 0x1c, 0x4c, 0x02, 0x65, 0x7c, 0xf8, 0xca,
+	0x99, 0xc2, 0xb3, 0xfe, 0x35, 0x34, 0xec, 0xab, 0xf0, 0x87, 0xdc, 0xd8, 0xf2, 0x5a, 0x2b, 0xb9,
+	0xb1, 0x93, 0x66, 0x45, 0xbe, 0x26, 0x85, 0xd9, 0x43, 0x50, 0x85, 0x19, 0xe2, 0xd5, 0xa0, 0x14,
+	0x27, 0x91, 0xbc, 0xf1, 0xe3, 0x24, 0x3a, 0xe8, 0x42, 0x5d, 0x3e, 0x2d, 0xf0, 0x3d, 0xf0, 0x1b,
+	0x7b, 0xd0, 0xd7, 0x0a, 0x44, 0x85, 0xca, 0xd1, 0x1b, 0xc7, 0xb4, 0x35, 0x05, 0x8f, 0x2f, 0xe9,
+	0xc0, 0x19, 0x68, 0x45, 0x3c, 0x1a, 0x76, 0xc7, 0xb2, 0xb4, 0x12, 0xd9, 0x02, 0x15, 0x55, 0x87,
+	0x96, 0xe9, 0x1c, 0x6b, 0xe5, 0x03, 0x63, 0xf5, 0x75, 0xd8, 0x13, 0xf7, 0xc2, 0xb6, 0x63, 0xd0,
+	0x13, 0xd3, 0x19, 0x76, 0xcd, 0x63, 0xab, 0x6f, 0x76, 0xb5, 0x02, 0x9a, 0x0d, 0xfa, 0xc3, 0xce,
+	0xa9, 0xd1, 0x3f, 0xc1, 0x07, 0x08, 0x3e, 0x4b, 0x8c, 0xde, 0xcb, 0x33, 0x53, 0x2b, 0x1e, 0x44,
+	0x50, 0x97, 0x37, 0x3b, 0x02, 0x31, 0x5f, 0x9b, 0x1d, 0xad, 0x40, 0x9a, 0x50, 0xef, 0x0c, 0x50,
+	0xc3, 0x41, 0xfd, 0xfb, 0x70, 0x57, 0x52, 0x43, 0x87, 0x1a, 0xd6, 0x99, 0xd5, 0x3f, 0x19, 0xda,
+	0x2f, 0x8d, 0x8e, 0xa9, 0x15, 0x57, 0x84, 0xc7, 0x16, 0xb5, 0x9d, 0x61, 0x67, 0xd0, 0xeb, 0x19,
+	0xfd, 0xae, 0xad, 0x95, 0xc8, 0x2e, 0x68, 0x99, 0xb0, 0xfb, 0xa6, 0x6f, 0xf4, 0xac, 0x8e, 0x56,
+	0x3e, 0x78, 0x06, 0xdb, 0xab, 0x57, 0x35, 0xd1, 0xa0, 0xd9, 0x19, 0xf4, 0x1d, 0xb3, 0xef, 0x0c,
+	0x1d, 0xf3, 0xb5, 0xa3, 0x15, 0xf2, 0x1c, 0x9e, 0x1c, 0xe5, 0x20, 0x10, 0x48, 0xf1, 0x42, 0x22,
+	0x0d, 0xa8, 0xd9, 0xe7, 0x9d, 0x8e, 0x69, 0xdb, 0x5a, 0x01, 0x89, 0xfe, 0xa0, 0x67, 0x38, 0x9d,
+	0x53, 0x4d, 0x21, 0xdb, 0x00, 0x56, 0x3f, 0xc3, 0x5e, 0xc4, 0xd0, 0x8d, 0xde, 0x91, 0x75, 0x72,
+	0x3e, 0x38, 0x47, 0x40, 0x75, 0x28, 0xdb, 0xa7, 0x83, 0xdf, 0x69, 0x65, 0x0c, 0x91, 0x9a, 0x5d,
+	0x8b, 0x9a, 0x1d, 0x47, 0xab, 0x90, 0x1d, 0xd8, 0x92, 0xd4, 0x90, 0x2b, 0x54, 0x0f, 0xfe, 0xad,
+	0x00, 0x2c, 0xbb, 0x86, 0xd4, 0xa0, 0x64, 0x9b, 0x88, 0x0c, 0xa0, 0xda, 0x35, 0xd3, 0xcc, 0x10,
+	0xd8, 0x7e, 0x65, 0x9c, 0x59, 0x5d, 0xc3, 0x31, 0x87, 0xb6, 0x63, 0x50, 0x47, 0x2b, 0x22, 0xf2,
+	0x8c, 0x67, 0xf6, 0xbb, 0x22, 0x0b, 0x4b, 0xad, 0x14, 0x76, 0x99, 0x7c, 0x02, 0xb7, 0x32, 0xee,
+	0xb1, 0x61, 0x9d, 0x99, 0x5d, 0xad, 0x22, 0xc2, 0xee, 0xf5, 0x2c, 0x27, 0x75, 0x57, 0xc5, 0x80,
+	0x52, 0x0e, 0x3a, 0xab, 0x61, 0x40, 0xf6, 0xf9, 0x91, 0xdd, 0xa1, 0xd6, 0x91, 0xa9, 0xd5, 0xd1,
+	0x4b, 0x46, 0x0e, 0x7b, 0xe7, 0x67, 0x8e, 0xa5, 0xa9, 0xe4, 0x36, 0xec, 0x2c, 0x99, 0xd4, 0xfc,
+	0xee, 0xdc, 0xb4, 0x1d, 0x0d, 0xc8, 0x2d, 0x68, 0xf0, 0xee, 0xe9, 0x0c, 0xfa, 0xc7, 0xd6, 0x89,
+	0xd6, 0x38, 0xf8, 0x02, 0xb6, 0x56, 0x86, 0x18, 0x53, 0x99, 0x56, 0x4f, 0x74, 0x0d, 0x57, 0x1f,
+	0x50, 0xeb, 0x44, 0x53, 0x0e, 0x1d, 0x28, 0x4f, 0xfa, 0x3d, 0x8b, 0x9c, 0x81, 0x9a, 0x19, 0x91,
+	0x07, 0x37, 0x4d, 0xf1, 0xde, 0xc3, 0x6b, 0xa4, 0xe2, 0xbf, 0x9b, 0xb6, 0xf2, 0x54, 0x39, 0x3c,
+	0x82, 0x32, 0x56, 0x95, 0x3c, 0x87, 0x6a, 0x37, 0xe4, 0xa7, 0xbb, 0xeb, 0x2b, 0x48, 0x7a, 0xbb,
+	0xfd, 0xa1, 0x60, 0xe6, 0x2f, 0xf4, 0xc2, 0xe1, 0xdf, 0x15, 0xa8, 0xcb, 0x1d, 0x41, 0x8e, 0x01,
+	0xba, 0x61, 0x46, 0xdd, 0xcf, 0xdb, 0xac, 0xad, 0xe0, 0xbd, 0x7b, 0x9b, 0x85, 0xdc, 0x29, 0x79,
+	0x0d, 0xda, 0xd2, 0x8f, 0xd8, 0x02, 0xe4, 0xd1, 0x26, 0x83, 0x95, 0x55, 0xb3, 0xf7, 0xe9, 0x4d,
+	0x2a, 0x02, 0xee, 0xef, 0x01, 0x96, 0x9b, 0x85, 0x9c, 0x41, 0x53, 0x04, 0x9e, 0xd2, 0x0f, 0xd7,
+	0xa3, 0x5c, 0xf5, 0x7f, 0xff, 0x3a, 0xb1, 0xf0, 0xdd, 0x87, 0xaa, 0xe8, 0x59, 0xd2, 0x85, 0x7a,
+	0x37, 0x4c, 0xcf, 0xf7, 0x3e, 0xbc, 0x09, 0xa5, 0xbf, 0xbb, 0x9b, 0x44, 0xdc, 0x97, 0x2c, 0x0f,
+	0x5e, 0x63, 0xe4, 0x79, 0xfa, 0x77, 0xf5, 0x67, 0x87, 0xe5, 0xbd, 0xb8, 0x5a, 0x9c, 0xec, 0xe6,
+	0xd3, 0x0b, 0x4f, 0x95, 0x8b, 0x2a, 0xff, 0x65, 0xec, 0xab, 0xff, 0x07, 0x00, 0x00, 0xff, 0xff,
+	0x89, 0xc3, 0x46, 0xd1, 0x2d, 0x13, 0x00, 0x00,
 }

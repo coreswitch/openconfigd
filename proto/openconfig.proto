@@ -18,6 +18,211 @@ package openconfig;
 
 // Import from gNMI.
 
+service gNMI {
+  // Capabilities allows the client to retrieve the set of capabilities that
+  // is supported by the target. This allows the target to validate the
+  // service version that is implemented and retrieve the set of models that
+  // the target supports. The models can then be specified in subsequent RPCs
+  // to restrict the set of data that is utilized.
+  // Reference: gNMI Specification Section 3.2
+  // rpc Capabilities(CapabilityRequest) returns (CapabilityResponse);
+  // Retrieve a snapshot of data from the target. A Get RPC requests that the
+  // target snapshots a subset of the data tree as specified by the paths
+  // included in the message and serializes this to be returned to the
+  // client using the specified encoding.
+  // Reference: gNMI Specification Section 3.3
+  // rpc Get(GetRequest) returns (GetResponse);
+  // Set allows the client to modify the state of data on the target. The
+  // paths to modified along with the new values that the client wishes
+  // to set the value to.
+  // Reference: gNMI Specification Section 3.4
+  // rpc Set(SetRequest) returns (SetResponse);
+  // Subscribe allows a client to request the target to send it values
+  // of particular paths within the data tree. These values may be streamed
+  // at a particular cadence (STREAM), sent one off on a long-lived channel
+  // (POLL), or sent as a one-off retrieval (ONCE).
+  // Reference: gNMI Specification Section 3.5
+  rpc Subscribe(stream SubscribeRequest) returns (stream SubscribeResponse);
+}
+
+// Decimal64 is used to encode a fixed precision decimal number. The value
+// is expressed as a set of digits with the precision specifying the
+// number of digits following the decimal point in the digit set.
+message Decimal64 {
+  int64 digits = 1;         // Set of digits.
+  uint32 precision = 2;     // Number of digits following the decimal point.
+}
+
+// ScalarArray is used to encode a mixed-type array of values.
+message ScalarArray {
+  // The set of elements within the array. Each TypedValue message should
+  // specify only elements that have a field identifier of 1-7 (i.e., the
+  // values are scalar values).
+  repeated TypedValue element = 1;
+}
+
+message Notification {
+  int64 timestamp = 1;          // Timestamp in nanoseconds since Epoch.
+  Path prefix = 2;              // Prefix used for paths in the message.
+  // An alias for the path specified in the prefix field.
+  // Reference: gNMI Specification Section 2.4.2
+  string alias = 3;
+  repeated Update update = 4;   // Data elements that have changed values.
+  repeated Path delete = 5;     // Data elements that have been deleted.
+}
+
+// TypedValue is used to encode a value being sent between the client and
+// target (originated by either entity).
+message TypedValue {
+  // One of the fields within the val oneof is populated with the value
+  // of the update. The type of the value being included in the Update
+  // determines which field should be populated. In the case that the
+  // encoding is a particular form of the base protobuf type, a specific
+  // field is used to store the value (e.g., json_val).
+  oneof value {
+    string string_val = 1;            // String value.
+    int64 int_val = 2;                // Integer value.
+    uint64 uint_val = 3;              // Unsigned integer value.
+    bool bool_val = 4;                // Bool value.
+    bytes bytes_val = 5;              // Arbitrary byte sequence value.
+    float float_val = 6;              // Floating point value.
+    Decimal64 decimal_val = 7;        // Decimal64 encoded value.
+    ScalarArray leaflist_val = 8;     // Mixed type scalar array value.
+    // google.protobuf.Any any_val = 9;  // protobuf.Any encoded bytes.
+    bytes json_val = 10;              // JSON-encoded text.
+    bytes json_ietf_val = 11;         // JSON-encoded text per RFC7951.
+    string ascii_val = 12;            // Arbitrary ASCII text.
+  }
+}
+
+// Update is a re-usable message that is used to store a particular Path,
+// Value pair.
+// Reference: gNMI Specification Section 2.1
+message Update {
+  Path path = 1;                      // The path (key) for the update.
+  // Value value = 2 [deprecated=true];  // The value (value) for the update.
+  TypedValue val = 3;                 // The explicitly typed update value.
+  uint32 duplicates = 4;              // Number of coalesced duplicates.
+}
+
+// Encoding defines the value encoding formats that are supported by the gNMI
+// protocol. These encodings are used by both the client (when sending Set
+// messages to modify the state of the target) and the target when serializing
+// data to be returned to the client (in both Subscribe and Get RPCs).
+// Reference: gNMI Specification Section 2.3
+enum Encoding {
+  JSON = 0;           // JSON encoded text.
+  BYTES = 1;          // Arbitrarily encoded bytes.
+  PROTO = 2;          // Encoded according to out-of-band agreed Protobuf.
+  ASCII = 3;          // ASCII text of an out-of-band agreed format.
+  JSON_IETF = 4;      // JSON encoded text as per RFC7951.
+}
+
+// SubscribeRequest is the message sent by the client to the target when
+// initiating a subscription to a set of paths within the data tree. The
+// request field must be populated and the initial message must specify a
+// SubscriptionList to initiate a subscription. The message is subsequently
+// used to define aliases or trigger polled data to be sent by the target.
+// Reference: gNMI Specification Section 3.5.1.1
+message SubscribeRequest {
+  oneof request {
+    SubscriptionList subscribe = 1; // Specify the paths within a subscription.
+    // Poll poll = 3;                  // Trigger a polled update.
+    // AliasList aliases = 4;          // Aliases to be created.
+  }
+  // Extension messages associated with the SubscribeRequest. See the
+  // gNMI extension specification for further definition.
+  // repeated gnmi_ext.Extension extension = 5;
+}
+
+// SubscribeResponse is the message used by the target within a Subscribe RPC.
+// The target includes a Notification message which is used to transmit values
+// of the path(s) that are associated with the subscription. The same message
+// is to indicate that the target has sent all data values once (is
+// synchronized).
+// Reference: gNMI Specification Section 3.5.1.4
+message SubscribeResponse {
+  oneof response {
+    Notification update = 1;          // Changed or sampled value for a path.
+    // Indicate target has sent all values associated with the subscription
+    // at least once.
+    bool sync_response = 3;
+    // Deprecated in favour of google.golang.org/genproto/googleapis/rpc/status
+    // Error error = 4 [deprecated=true];
+  }
+  // Extension messages associated with the SubscribeResponse. See the
+  // gNMI extension specification for further definition.
+  // repeated gnmi_ext.Extension extension = 5;
+}
+// SubscriptionList is used within a Subscribe message to specify the list of
+// paths that the client wishes to subscribe to. The message consists of a
+// list of (possibly prefixed) paths, and options that relate to the
+// subscription.
+// Reference: gNMI Specification Section 3.5.1.2
+message SubscriptionList {
+  Path prefix = 1;                          // Prefix used for paths.
+  repeated Subscription subscription = 2;   // Set of subscriptions to create.
+  // Whether target defined aliases are allowed within the subscription.
+  bool use_aliases = 3;
+  QOSMarking qos = 4;                       // DSCP marking to be used.
+  // Mode of the subscription.
+  enum Mode {
+    STREAM = 0; // Values streamed by the target (Sec. 3.5.1.5.2).
+    ONCE = 1;   // Values sent once-off by the target (Sec. 3.5.1.5.1).
+    POLL = 2;   // Values sent in response to a poll request (Sec. 3.5.1.5.3).
+  }
+  Mode mode = 5;
+  // Whether elements of the schema that are marked as eligible for aggregation
+  // should be aggregated or not.
+  bool allow_aggregation = 6;
+  // The set of schemas that define the elements of the data tree that should
+  // be sent by the target.
+  repeated ModelData use_models = 7;
+  // The encoding that the target should use within the Notifications generated
+  // corresponding to the SubscriptionList.
+  Encoding encoding = 8;
+  // An optional field to specify that only updates to current state should be
+  // sent to a client. If set, the initial state is not sent to the client but
+  // rather only the sync message followed by any subsequent updates to the
+  // current state. For ONCE and POLL modes, this causes the server to send only
+  // the sync message (Sec. 3.5.2.3).
+  bool updates_only = 9;
+}
+
+// Subscription is a single request within a SubscriptionList. The path
+// specified is interpreted (along with the prefix) as the elements of the data
+// tree that the client is subscribing to. The mode determines how the target
+// should trigger updates to be sent.
+// Reference: gNMI Specification Section 3.5.1.3
+message Subscription {
+  Path path = 1;                    // The data tree path.
+  SubscriptionMode mode = 2;        // Subscription mode to be used.
+  uint64 sample_interval = 3;       // ns between samples in SAMPLE mode.
+  // Indicates whether values that not changed should be sent in a SAMPLE
+  // subscription.
+  bool suppress_redundant = 4;
+  // Specifies the maximum allowable silent period in nanoseconds when
+  // suppress_redundant is in use. The target should send a value at least once
+  // in the period specified.
+  uint64 heartbeat_interval = 5;
+}
+
+// SubscriptionMode is the mode of the subscription, specifying how the
+// target must return values in a subscription.
+// Reference: gNMI Specification Section 3.5.1.3
+enum SubscriptionMode {
+  TARGET_DEFINED = 0;  // The target selects the relevant mode for each element.
+  ON_CHANGE      = 1;  // The target sends an update on element value change.
+  SAMPLE         = 2;  // The target samples values according to the interval.
+}
+
+// QOSMarking specifies the DSCP value to be set on transmitted telemetry
+// updates from the target.
+// Reference: gNMI Specification Section 3.5.1.2
+message QOSMarking {
+  uint32 marking = 1;
+}
+
 // Path encodes a data tree path as a series of repeated strings, with
 // each element of the path representing a data tree node name and the
 // associated attributes.
@@ -40,6 +245,18 @@ message PathElem {
   map<string, string> key = 2;        // Map of key (attribute) name to value.
 }
 
+// ModelData is used to describe a set of schema modules. It can be used in a
+// CapabilityResponse where a target reports the set of modules that it
+// supports, and within the SubscribeRequest and GetRequest messages to specify
+// the set of models from which data tree elements should be reported.
+// Reference: gNMI Specification Section 3.2.3
+message ModelData {
+  string name = 1;            // Name of the model.
+  string organization = 2;    // Organization publishing the model.
+  string version = 3;         // Semantic version of the model.
+}
+
+// End of gNMI import.
 
 // The Command execution.
 service Exec {
@@ -165,10 +382,10 @@ service Config {
 // Subscribe type.
 enum SubscribeType {
 	COMMAND = 0;
-	JSON = 1;
+	JSON_ORIG = 1;
 }
 
-message SubscribeRequest {
+message SubscribeRequestOrig {
 	SubscribeType type = 1;
 	string path = 2;
 }
@@ -179,7 +396,7 @@ message ConfigRequest {
 	uint32 port = 3;
 	SubscribeType subtype = 4;
 	repeated string path = 5;
-	repeated SubscribeRequest subscribe = 6;
+	repeated SubscribeRequestOrig subscribe = 6;
 }
 
 message ConfigReply {
