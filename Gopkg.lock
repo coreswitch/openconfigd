@@ -179,7 +179,7 @@
     "zebra"
   ]
   revision = "c897c73f0fbec106cd58b483444b8c88a8616518"
-  source = "git@github.com:hash-set/gobgp.1.27.git"
+  source = "https://github.com/hash-set/gobgp.1.27"
 
 [[projects]]
   name = "github.com/pelletier/go-toml"
@@ -352,6 +352,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "7cdf6c2feaf02972b45376b7da6242da20e2004d4d74ea8a689a71ee71596b03"
+  inputs-digest = "c2f27fc56d0bb22c4b9d8e3fbd5b2bacda65300a4760e41d1c34fb598ca04356"
   solver-name = "gps-cdcl"
   solver-version = 1
