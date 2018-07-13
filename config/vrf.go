@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+
 	//"net"
 
 	log "github.com/sirupsen/logrus"
@@ -502,7 +503,7 @@ func VrfParse(vrfId int, jsonStr string) {
 		return
 	}
 
-	// Sort interfce and sub interface by name.
+	// Sort interface and sub interface by name.
 	sort.Sort(vrf.Interfaces)
 
 	// Vrf Sync.
