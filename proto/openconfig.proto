@@ -130,6 +130,7 @@ enum ConfigType {
 	SUBSCRIBE_MULTI = 9;
 	SUBSCRIBE_REQUEST = 10;
 	JSON_CONFIG = 11;
+  API_CALL_FINISHED = 12;
 }
 
 // Configuration

@@ -215,11 +215,13 @@ func OspfVrfSync(vrfId int, cfg *VrfsConfig) {
 	// Exit if no need of ospfd to be run.
 	if len(cfg.Ospf) == 0 {
 		fmt.Println("XX Empty ospf config returning")
+		NexthopWalkerUpdate()
 		return
 	}
 
 	// Launch process.
 	OspfExec(vrfId, &cfg.Ospf)
+	NexthopWalkerUpdate()
 }
 
 func OspfVrfDelete(vrfId int) {
@@ -228,6 +230,7 @@ func OspfVrfDelete(vrfId int) {
 
 	// Delete stored config.
 	delete(OspfVrfMap, vrfId)
+	NexthopWalkerUpdate()
 }
 
 func OspfVrfExit() {

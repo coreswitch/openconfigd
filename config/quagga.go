@@ -113,10 +113,12 @@ func QuaggaVrfSync(vrfId int, cfg *VrfsConfig) {
 	for _, bgpConfig := range cfg.Bgp {
 		QuaggaExec(vrfId, bgpConfig.Interface, bgpConfig.CiscoConfig)
 	}
+	NexthopWalkerUpdate()
 }
 
 func QuaggaVrfDelete(vrfId int) {
 	QuaggaDelete(vrfId)
+	NexthopWalkerUpdate()
 }
 
 func NexthopWalkerUpdate() {

@@ -24,6 +24,7 @@ import (
 	"github.com/coreswitch/cmd"
 	"github.com/coreswitch/component"
 	rpc "github.com/coreswitch/openconfigd/proto"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/grpclog"
@@ -237,15 +238,20 @@ loop:
 		case rpc.ConfigType_SUBSCRIBE_REQUEST:
 			go SubscribeAdd(stream, msg)
 		case rpc.ConfigType_SET:
-			YangConfigPush(msg.Path)
+			go YangConfigPush(msg.Path)
 		case rpc.ConfigType_DELETE:
-			YangConfigPull(msg.Path)
+			go YangConfigPull(msg.Path)
 		case rpc.ConfigType_VALIDATE_SUCCESS:
 			//fmt.Println("Validate Success")
 			SubscribeValidateProcess(stream, msg.Type)
 		case rpc.ConfigType_VALIDATE_FAILED:
 			//fmt.Println("Validate Failed")
 			SubscribeValidateProcess(stream, msg.Type)
+		case rpc.ConfigType_API_CALL_FINISHED:
+			log.Info("API_SYNC: gRPC message received")
+			if ApiSyncCh != nil {
+				close(ApiSyncCh)
+			}
 		}
 	}
 	if stream != nil {

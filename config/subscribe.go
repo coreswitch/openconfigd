@@ -23,6 +23,7 @@ import (
 	"time"
 
 	rpc "github.com/coreswitch/openconfigd/proto"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -32,6 +33,7 @@ var (
 	SubscribeMutex  sync.RWMutex
 	ValidateCount   int
 	RibdAsyncUpdate = false
+	ApiSyncCh       chan interface{}
 )
 
 type Path struct {
@@ -54,11 +56,50 @@ type SubPath interface {
 	CommandClear()
 }
 
+type pathCmdPair struct {
+	Path     string
+	Commands []*Command
+}
+
+type pathToCmdsMap struct {
+	pathToIdx map[string]int
+	pathToCmd []*pathCmdPair
+}
+
+func newPathToCmdsMap() *pathToCmdsMap {
+	return &pathToCmdsMap{
+		pathToIdx: map[string]int{},
+		pathToCmd: []*pathCmdPair{},
+	}
+}
+
+func (m *pathToCmdsMap) Append(path string, cmd *Command) {
+	if idx, ok := m.pathToIdx[path]; ok {
+		m.pathToCmd[idx].Commands = append(m.pathToCmd[idx].Commands, cmd)
+	} else {
+		pair := &pathCmdPair{
+			Path:     path,
+			Commands: []*Command{cmd},
+		}
+		m.pathToCmd = append(m.pathToCmd, pair)
+		m.pathToIdx[path] = len(m.pathToCmd) - 1
+	}
+}
+
+func (m pathToCmdsMap) Paths() []*pathCmdPair {
+	return m.pathToCmd
+}
+
+func (m *pathToCmdsMap) Clear() {
+	m.pathToCmd = []*pathCmdPair{}
+	m.pathToIdx = map[string]int{}
+}
+
 type SubPathBase struct {
-	path    *Path
-	pathcmd map[string][]*Command
-	sync    bool
-	json    bool
+	path      *Path
+	pathToCmd *pathToCmdsMap
+	sync      bool
+	json      bool
 }
 
 type SubPathJsonCallback func([]string, string) error
@@ -75,8 +116,8 @@ type SubPathRemote struct {
 
 func (subPath *SubPathBase) Len() int {
 	num := 0
-	for _, cmd := range subPath.pathcmd {
-		num += len(cmd)
+	for _, pathcmd := range subPath.pathToCmd.pathToCmd {
+		num += len(pathcmd.Commands)
 	}
 	return num
 }
@@ -87,8 +128,7 @@ func (subPath *SubPathBase) Sync() bool {
 
 func (subPath *SubPathBase) Append(path []string, cmd *Command) {
 	pathStr := strings.Join(path, "|")
-	subPath.pathcmd[pathStr] = append(subPath.pathcmd[pathStr], cmd)
-	//subPath.cmd = append(subPath.cmd, cmd)
+	subPath.pathToCmd.Append(pathStr, cmd)
 }
 
 func (subPath *SubPathBase) Commit() {
@@ -99,16 +139,16 @@ func (subPath *SubPathBase) Path() *Path {
 }
 
 func (subPath *SubPathBase) CommandClear() {
-	//subPath.cmd = subPath.cmd[:0]
-	subPath.pathcmd = map[string][]*Command{}
+	subPath.pathToCmd.Clear()
 }
 
 func (subPath *SubPathRemote) Commit() {
 	fmt.Println("[cmd]SubPathRemote:Commit() Start", subPath.path.Name)
-	for pathstr, pathcmd := range subPath.pathcmd {
+	for _, pathcmd := range subPath.pathToCmd.Paths() {
 		if subPath.json {
-			fmt.Println("XXX JSON Commit", pathstr)
-			path := strings.Split(pathstr, "|")
+			commandPath := pathcmd.Path
+			fmt.Println("XXX JSON Commit", commandPath)
+			path := strings.Split(commandPath, "|")
 			config := configCandidate.LookupByPath(path)
 			json := "{}"
 			if config != nil {
@@ -119,7 +159,7 @@ func (subPath *SubPathRemote) Commit() {
 			subPath.sub.SendJSON(path, json)
 			fmt.Println("JSON:", json)
 		} else {
-			for _, cmd := range pathcmd {
+			for _, cmd := range pathcmd.Commands {
 				subPath.sub.SendCommand(cmd)
 			}
 		}
@@ -131,9 +171,9 @@ func (subPath *SubPathLocal) Commit() {
 	if subPath.Len() == 0 {
 		return
 	}
-	for pathstr, pathcmd := range subPath.pathcmd {
+	for _, pathcmd := range subPath.pathToCmd.Paths() {
 		if subPath.json != nil {
-			path := strings.Split(pathstr, "|")
+			path := strings.Split(pathcmd.Path, "|")
 			config := configCandidate.LookupByPath(path)
 			json := "{}"
 			if config != nil {
@@ -143,7 +183,7 @@ func (subPath *SubPathLocal) Commit() {
 			}
 			subPath.json(path, json)
 		} else {
-			for _, cmd := range pathcmd {
+			for _, cmd := range pathcmd.Commands {
 				ExecCmd(cmd)
 			}
 		}
@@ -266,12 +306,26 @@ func (sub *Subscriber) Commit() {
 	if !sub.HasCommand() {
 		return
 	}
+	if sub.stream != nil {
+		log.Info("API_SYNC: START")
+		ApiSyncCh = make(chan interface{})
+	}
 	sub.CommitStart()
 	for _, subPath := range sub.SubPath {
 		subPath.Commit()
 		subPath.CommandClear()
 	}
 	sub.CommitEnd()
+	if sub.stream != nil {
+		log.Info("API_SYNC: Waiting")
+		select {
+		case <-ApiSyncCh:
+			log.Info("API_SYNC: Done")
+		case <-time.After(time.Second * 20):
+			log.Info("API_SYNC: Timeout!")
+		}
+		ApiSyncCh = nil
+	}
 }
 
 func (sub *Subscriber) CommandClear() {
@@ -479,7 +533,7 @@ func SubscribeLocalAdd(path []string, json SubPathJsonCallback) {
 		SubscribeMap[sub] = sub
 	}
 	subPath := &SubPathLocal{}
-	subPath.pathcmd = map[string][]*Command{}
+	subPath.pathToCmd = newPathToCmdsMap()
 	if json != nil {
 		subPath.json = json
 	}
@@ -516,7 +570,7 @@ func SubscribeRemoteAdd(stream rpc.Config_DoConfigServer, req *rpc.ConfigRequest
 
 	// Registration
 	subPath := &SubPathRemote{sub: sub}
-	subPath.pathcmd = map[string][]*Command{}
+	subPath.pathToCmd = newPathToCmdsMap()
 	subPath.sync = true
 	subPath.RegisterPath(req.Path)
 	sub.SubPath = append(sub.SubPath, subPath)
@@ -560,7 +614,7 @@ func SubscribeAdd(stream rpc.Config_DoConfigServer, req *rpc.ConfigRequest) {
 	subPathList := []*SubPathRemote{}
 	for _, path := range req.Subscribe {
 		subPath := &SubPathRemote{sub: sub}
-		subPath.pathcmd = map[string][]*Command{}
+		subPath.pathToCmd = newPathToCmdsMap()
 		subPath.sync = true
 		subPath.RegisterPath([]string{path.Path})
 		if path.Type == rpc.SubscribeType_JSON {
@@ -611,7 +665,7 @@ func SubscribeRemoteAddMulti(stream rpc.Config_DoConfigServer, req *rpc.ConfigRe
 	subPathList := []*SubPathRemote{}
 	for _, path := range req.Path {
 		subPath := &SubPathRemote{sub: sub}
-		subPath.pathcmd = map[string][]*Command{}
+		subPath.pathToCmd = newPathToCmdsMap()
 		subPath.sync = true
 		subPath.RegisterPath([]string{path})
 		sub.SubPath = append(sub.SubPath, subPath)

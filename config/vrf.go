@@ -180,6 +180,7 @@ func ProcessInterfacesAdd(vrfId int, ifaces []Interface) {
 		// Wait for Ribd to create the interface in case we get NoMatch
 		ExecLineWaitIfNoMatch(fmt.Sprintf("set interfaces interface %s", ifp.Name))
 		ExecLine(fmt.Sprintf("set interfaces interface %s vrf vrf%d", ifp.Name, vrfId))
+		Commit()
 		for _, addr := range ifp.IPv4.Address {
 			ExecLine(fmt.Sprintf("set interfaces interface %s ipv4 address %s", ifp.Name, addr.Ip))
 		}

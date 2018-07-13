@@ -291,19 +291,25 @@ func GobgpDeletePolicyDefinition(client *client.Client, cfg bgpconfig.PolicyDefi
 		fmt.Println("GobgpDeletePolicyDefinition NewPolicy():", err)
 		return
 	}
+	err = client.DeletePolicy(policy, true, false)
+	if err != nil {
+		fmt.Println("GobgpDeletePolicyDefinition DeletePolicy():", err)
+	}
 	for _, st := range policy.Statements {
 		err = client.DeleteStatement(st, true)
 		if err != nil {
 			fmt.Println("GobgpDeletePolicyDefinition DeleteStatement():", err)
 		}
 	}
-	err = client.DeletePolicy(policy, true, false)
-	if err != nil {
-		fmt.Println("GobgpDeletePolicyDefinition DeletePolicy():", err)
-	}
 }
 
-func GobgpAddGlobalPolicy(client *client.Client, direction string, policyNames []string) error {
+// mapping provided by gobgp config is incorrect
+var DefaultPolicyTypeToIntMap = map[bgpconfig.DefaultPolicyType]int{
+	bgpconfig.DEFAULT_POLICY_TYPE_ACCEPT_ROUTE: 1,
+	bgpconfig.DEFAULT_POLICY_TYPE_REJECT_ROUTE: 2,
+}
+
+func GobgpAddGlobalPolicy(client *client.Client, direction string, policyNames []string, defaultRouteType bgpconfig.DefaultPolicyType) error {
 	assign := &table.PolicyAssignment{}
 
 	switch direction {
@@ -320,7 +326,7 @@ func GobgpAddGlobalPolicy(client *client.Client, direction string, policyNames [
 		ps = append(ps, &table.Policy{Name: name})
 	}
 	assign.Policies = ps
-	assign.Default = table.ROUTE_TYPE_ACCEPT
+	assign.Default = table.RouteType(DefaultPolicyTypeToIntMap[defaultRouteType])
 
 	err := client.AddPolicyAssignment(assign)
 	if err != nil {
@@ -347,7 +353,7 @@ func GobgpDeleteGlobalPolicy(client *client.Client, direction string, policyName
 		ps = append(ps, &table.Policy{Name: name})
 	}
 	assign.Policies = ps
-	assign.Default = table.ROUTE_TYPE_ACCEPT
+	assign.Default = table.ROUTE_TYPE_REJECT
 
 	err := client.DeletePolicyAssignment(assign, false)
 	if err != nil {
@@ -376,6 +382,7 @@ func GobgpSetZebraRoutine() error {
 	zebra.Config.Enabled = true
 	zebra.Config.Url = "unix:/var/run/zserv.api"
 	zebra.Config.Version = 3
+	zebra.Config.RedistributeRouteTypeList = []bgpconfig.InstallProtocolType{"bgp", "ospf"}
 	err = client.EnableZebra(zebra)
 	if err != nil {
 		return err
@@ -472,13 +479,13 @@ func GobgpSetPolicyDefinition(client *client.Client, cfg *GobgpConfig) {
 func GobgpSetGlobalPolicy(client *client.Client, cfg *GobgpConfig) error {
 	config := &cfg.Global.ApplyPolicy.Config
 	if len(config.ExportPolicyList) > 0 {
-		GobgpAddGlobalPolicy(client, "export", config.ExportPolicyList)
+		GobgpAddGlobalPolicy(client, "export", config.ExportPolicyList, config.DefaultExportPolicy)
 	}
 	if len(config.ImportPolicyList) > 0 {
-		GobgpAddGlobalPolicy(client, "import", config.ImportPolicyList)
+		GobgpAddGlobalPolicy(client, "import", config.ImportPolicyList, config.DefaultImportPolicy)
 	}
 	if len(config.InPolicyList) > 0 {
-		GobgpAddGlobalPolicy(client, "in", config.InPolicyList)
+		GobgpAddGlobalPolicy(client, "in", config.InPolicyList, config.DefaultInPolicy)
 	}
 	return nil
 }
@@ -641,8 +648,8 @@ func GobgpUpdateVrf(client *client.Client, cfg *GobgpConfig) {
 	}
 }
 
-func GobgpUpdate(cfg *GobgpConfig) error {
-	fmt.Println("Updating configuration")
+func GobgpUpdate(cfg *GobgpConfig, withReset bool) error {
+	fmt.Printf("Updating configuration, reset: %t\n", withReset)
 	client, err := NewGobgpClient()
 	if err != nil {
 		return err
@@ -662,8 +669,10 @@ func GobgpUpdate(cfg *GobgpConfig) error {
 	GobgpSetGlobalPolicy(client, cfg)
 	GobgpSetZebra(client, cfg, 3)
 
-	// Soft reset all of neighbors to reflect policy change.
-	GobgpSoftresetNeighbor(client, cfg)
+	if withReset {
+		// Soft reset all of neighbors to reflect policy change.
+		GobgpSoftresetNeighbor(client, cfg)
+	}
 
 	return nil
 }
@@ -694,12 +703,10 @@ func GobgpReset(cfg *GobgpConfig) error {
 }
 
 // Map for configured neighbor.
+// TODO: Revisit this. At present this is mostly redundant. Neighbor add/delete can be simplified
 var (
-	GobgpNeighborMap   = map[string]bgpconfig.Neighbor{}
-	GobgpNeighborCache GobgpConfig
+	GobgpNeighborMap = map[string]bgpconfig.Neighbor{}
 	GobgpNeighborMutex sync.Mutex
-	GobgpNeighborDelay time.Duration = 3
-	GobgpAfterFunc     *time.Timer
 )
 
 type NeighborConfig struct {
@@ -708,21 +715,11 @@ type NeighborConfig struct {
 
 func GobgpNeighborUpdate(ncfg *bgpconfig.Neighbor, add bool) {
 	var cfg GobgpConfig
-	if GobgpAfterFunc == nil {
-		cfg = gobgpConfig
-		cfg.Neighbors = make([]bgpconfig.Neighbor, 0)
-		for _, n := range gobgpConfig.Neighbors {
-			if n.Config.NeighborAddress != ncfg.Config.NeighborAddress {
-				cfg.Neighbors = append(cfg.Neighbors, n)
-			}
-		}
-	} else {
-		cfg = GobgpNeighborCache
-		cfg.Neighbors = make([]bgpconfig.Neighbor, 0)
-		for _, n := range GobgpNeighborCache.Neighbors {
-			if n.Config.NeighborAddress != ncfg.Config.NeighborAddress {
-				cfg.Neighbors = append(cfg.Neighbors, n)
-			}
+	cfg = gobgpConfig
+	cfg.Neighbors = make([]bgpconfig.Neighbor, 0)
+	for _, n := range gobgpConfig.Neighbors {
+		if n.Config.NeighborAddress != ncfg.Config.NeighborAddress {
+			cfg.Neighbors = append(cfg.Neighbors, n)
 		}
 	}
 
@@ -730,22 +727,8 @@ func GobgpNeighborUpdate(ncfg *bgpconfig.Neighbor, add bool) {
 		cfg.Neighbors = append(cfg.Neighbors, *ncfg)
 	}
 
-	if cfg.Global.Equal(&gobgpConfig.Global) {
-		GobgpNeighborCache = cfg
-		if GobgpAfterFunc == nil {
-			GobgpAfterFunc = time.AfterFunc(time.Second*GobgpNeighborDelay, func() {
-				GobgpNeighborMutex.Lock()
-				defer GobgpNeighborMutex.Unlock()
-
-				GobgpUpdate(&GobgpNeighborCache)
-				gobgpConfig = GobgpNeighborCache
-				GobgpAfterFunc = nil
-			})
-		}
-	} else {
-		GobgpReset(&cfg)
-		gobgpConfig = cfg
-	}
+	GobgpUpdate(&cfg, false)
+	gobgpConfig = cfg
 }
 
 func GobgpNeighborAdd(id string, jsonStr string) {
@@ -830,7 +813,8 @@ func GobgpParse(jsonStr string) {
 	GobgpRouterIdRegister(cfg.Global.Config.RouterId)
 
 	if cfg.Global.Equal(&gobgpConfig.Global) {
-		GobgpUpdate(&cfg)
+		// most likely policy change.
+		GobgpUpdate(&cfg, true)
 	} else {
 		GobgpReset(&cfg)
 	}
@@ -929,7 +913,7 @@ func GobgpVrfUpdate(vrfConfig VrfConfig) {
 	cfg.Vrfs = append(cfg.Vrfs, vrfConfig)
 
 	if cfg.Global.Equal(&gobgpConfig.Global) {
-		GobgpUpdate(&cfg)
+		GobgpUpdate(&cfg, false)
 	} else {
 		GobgpReset(&cfg)
 	}
@@ -953,7 +937,7 @@ func GobgpVrfDelete(vrfId int) {
 	}
 
 	if cfg.Global.Equal(&gobgpConfig.Global) {
-		GobgpUpdate(&cfg)
+		GobgpUpdate(&cfg, false)
 	} else {
 		GobgpReset(&cfg)
 	}
