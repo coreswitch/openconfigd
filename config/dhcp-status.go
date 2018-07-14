@@ -83,7 +83,6 @@ func LoadLease(reader io.Reader) (*LeaseMap, error) {
 			return nil, fmt.Errorf("Parse error")
 		}
 	}
-	return &leaseMap, nil
 }
 
 type DhcpRange struct {

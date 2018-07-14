@@ -3,13 +3,14 @@ package config
 import (
 	"context"
 	"fmt"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/etcdserver/etcdserverpb"
 	"github.com/coreos/etcd/mvcc/mvccpb"
 	. "github.com/onsi/gomega"
-	"sync"
-	"testing"
-	"time"
 	net_context "golang.org/x/net/context"
 )
 
@@ -265,11 +266,10 @@ func TestResyncAndWatch(t *testing.T) {
 	}
 	var wg sync.WaitGroup
 	rev := int64(-1)
-	var err error
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		rev, err = w.ResyncAndWatch(ctx, 0)
+		rev, _ = w.ResyncAndWatch(ctx, 0)
 	}()
 	time.AfterFunc(5*time.Second, watchCancel)
 	wg.Wait()

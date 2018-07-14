@@ -243,9 +243,8 @@ func ConfigDump(c *Config, depth int, keynode bool) {
 }
 
 func ConfigDumpCandidate() {
-	return
-	fmt.Println("-------")
-	ConfigDump(configCandidate, -1, false)
+	// fmt.Println("-------")
+	// ConfigDump(configCandidate, -1, false)
 }
 
 func CaseEntry(e *yang.Entry) *yang.Entry {

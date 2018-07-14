@@ -40,7 +40,7 @@ func QuaggaExit() {
 }
 
 func QuaggaDelete(vrfId int) {
-	fmt.Println("[quagga]delete: vrfId, Processes: %+v", vrfId, QuaggaProc[vrfId])
+	fmt.Printf("[quagga]delete: vrfId %d, Processes: %v\n", vrfId, QuaggaProc[vrfId])
 	_, ok := QuaggaProc[vrfId]
 	if ok {
 		for _, proc := range QuaggaProc[vrfId] {
