@@ -8,7 +8,7 @@ Group=root
 StandardOutput=syslog
 StandardError=syslog
 Restart=always
-ExecStart=/usr/bin/openconfigd -y /etc/openconfigd/yang
+ExecStart=/usr/bin/openconfigd -y /etc/openconfigd/yang -z
 
 [Install]
 WantedBy=multi-user.target

@@ -36,4 +36,4 @@
 .libs/
 
 # Debian package
-debian/out/
+package/out/
