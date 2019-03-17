@@ -705,7 +705,7 @@ func GobgpReset(cfg *GobgpConfig) error {
 // Map for configured neighbor.
 // TODO: Revisit this. At present this is mostly redundant. Neighbor add/delete can be simplified
 var (
-	GobgpNeighborMap = map[string]bgpconfig.Neighbor{}
+	GobgpNeighborMap   = map[string]bgpconfig.Neighbor{}
 	GobgpNeighborMutex sync.Mutex
 )
 
@@ -779,6 +779,7 @@ func GobgpNeighborDelete(id string) {
 }
 
 func GobgpParse(jsonStr string) {
+	fmt.Println(jsonStr)
 	var jsonIntf interface{}
 	err := json.Unmarshal([]byte(jsonStr), &jsonIntf)
 	if err != nil {

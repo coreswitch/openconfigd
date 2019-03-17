@@ -60,7 +60,7 @@ var (
 
 	etcdWatchHandler         *EtcdWatcher
 	etcdWatchContextCanceler func()
-	etcdWatchWg sync.WaitGroup
+	etcdWatchWg              sync.WaitGroup
 )
 
 const (
@@ -216,6 +216,9 @@ func EtcdKeyValueParse(key []byte, value []byte) {
 		return
 	}
 
+	jsonStr := string(value)
+	fmt.Println("jsonStr", jsonStr)
+
 	var jsonIntf interface{}
 	err := json.Unmarshal(value, &jsonIntf)
 	if err != nil {
@@ -230,12 +233,8 @@ func EtcdKeyValueParse(key []byte, value []byte) {
 
 	jsonBody := &JsonBody{}
 	err = mapstructure.Decode(jsonIntf, jsonBody)
-	if err != nil {
-		log.WithFields(log.Fields{
-			"json-intf": jsonIntf,
-			"error":     err,
-		}).Error("EtcdKeyValueParse:mapstructure.Decode()")
-		return
+	if err == nil && jsonBody.Body != "" {
+		jsonStr = jsonBody.Body
 	}
 
 	// Cache for debug command
@@ -247,11 +246,11 @@ func EtcdKeyValueParse(key []byte, value []byte) {
 	switch path[0] {
 	case "bgp":
 		etcdLastValue = string(value)
-		etcdLastJson = *jsonBody
+		//etcdLastJson = *jsonBody
 		if len(path) == 3 {
-			GobgpNeighborAdd(path[2], jsonBody.Body)
+			GobgpNeighborAdd(path[2], jsonStr)
 		} else {
-			GobgpParse(jsonBody.Body)
+			GobgpParse(jsonStr)
 		}
 	case "quagga":
 		if len(path) <= 1 {
