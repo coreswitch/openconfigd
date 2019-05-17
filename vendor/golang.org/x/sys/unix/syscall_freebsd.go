@@ -12,12 +12,8 @@
 
 package unix
 
-import (
-	"strings"
-	"unsafe"
-)
+import "unsafe"
 
-// SockaddrDatalink implements the Sockaddr interface for AF_LINK type sockets.
 type SockaddrDatalink struct {
 	Len    uint8
 	Family uint8
@@ -56,6 +52,18 @@ func nametomib(name string) (mib []_C_int, err error) {
 		return nil, err
 	}
 	return buf[0 : n/siz], nil
+}
+
+func direntIno(buf []byte) (uint64, bool) {
+	return readInt(buf, unsafe.Offsetof(Dirent{}.Fileno), unsafe.Sizeof(Dirent{}.Fileno))
+}
+
+func direntReclen(buf []byte) (uint64, bool) {
+	return readInt(buf, unsafe.Offsetof(Dirent{}.Reclen), unsafe.Sizeof(Dirent{}.Reclen))
+}
+
+func direntNamlen(buf []byte) (uint64, bool) {
+	return readInt(buf, unsafe.Offsetof(Dirent{}.Namlen), unsafe.Sizeof(Dirent{}.Namlen))
 }
 
 //sysnb pipe() (r int, w int, err error)
@@ -137,7 +145,14 @@ func setattrlistTimes(path string, times []Timespec, flags int) error {
 // Derive extattr namespace and attribute name
 
 func xattrnamespace(fullattr string) (ns int, attr string, err error) {
-	s := strings.IndexByte(fullattr, '.')
+	s := -1
+	for idx, val := range fullattr {
+		if val == '.' {
+			s = idx
+			break
+		}
+	}
+
 	if s == -1 {
 		return -1, "", ENOATTR
 	}
@@ -278,6 +293,7 @@ func Listxattr(file string, dest []byte) (sz int, err error) {
 
 	// FreeBSD won't allow you to list xattrs from multiple namespaces
 	s := 0
+	var e error
 	for _, nsid := range [...]int{EXTATTR_NAMESPACE_USER, EXTATTR_NAMESPACE_SYSTEM} {
 		stmp, e := ExtattrListFile(file, nsid, uintptr(d), destsiz)
 
@@ -289,6 +305,7 @@ func Listxattr(file string, dest []byte) (sz int, err error) {
 		 * we don't have read permissions on, so don't ignore those errors
 		 */
 		if e != nil && e == EPERM && nsid != EXTATTR_NAMESPACE_USER {
+			e = nil
 			continue
 		} else if e != nil {
 			return s, e
@@ -302,7 +319,7 @@ func Listxattr(file string, dest []byte) (sz int, err error) {
 		d = initxattrdest(dest, s)
 	}
 
-	return s, nil
+	return s, e
 }
 
 func Flistxattr(fd int, dest []byte) (sz int, err error) {
@@ -310,9 +327,11 @@ func Flistxattr(fd int, dest []byte) (sz int, err error) {
 	destsiz := len(dest)
 
 	s := 0
+	var e error
 	for _, nsid := range [...]int{EXTATTR_NAMESPACE_USER, EXTATTR_NAMESPACE_SYSTEM} {
 		stmp, e := ExtattrListFd(fd, nsid, uintptr(d), destsiz)
 		if e != nil && e == EPERM && nsid != EXTATTR_NAMESPACE_USER {
+			e = nil
 			continue
 		} else if e != nil {
 			return s, e
@@ -326,7 +345,7 @@ func Flistxattr(fd int, dest []byte) (sz int, err error) {
 		d = initxattrdest(dest, s)
 	}
 
-	return s, nil
+	return s, e
 }
 
 func Llistxattr(link string, dest []byte) (sz int, err error) {
@@ -334,9 +353,11 @@ func Llistxattr(link string, dest []byte) (sz int, err error) {
 	destsiz := len(dest)
 
 	s := 0
+	var e error
 	for _, nsid := range [...]int{EXTATTR_NAMESPACE_USER, EXTATTR_NAMESPACE_SYSTEM} {
 		stmp, e := ExtattrListLink(link, nsid, uintptr(d), destsiz)
 		if e != nil && e == EPERM && nsid != EXTATTR_NAMESPACE_USER {
+			e = nil
 			continue
 		} else if e != nil {
 			return s, e
@@ -350,7 +371,7 @@ func Llistxattr(link string, dest []byte) (sz int, err error) {
 		d = initxattrdest(dest, s)
 	}
 
-	return s, nil
+	return s, e
 }
 
 //sys   ioctl(fd int, req uint, arg uintptr) (err error)
@@ -478,7 +499,6 @@ func Uname(uname *Utsname) error {
 //sys	Flock(fd int, how int) (err error)
 //sys	Fpathconf(fd int, name int) (val int, err error)
 //sys	Fstat(fd int, stat *Stat_t) (err error)
-//sys	Fstatat(fd int, path string, stat *Stat_t, flags int) (err error)
 //sys	Fstatfs(fd int, stat *Statfs_t) (err error)
 //sys	Fsync(fd int) (err error)
 //sys	Ftruncate(fd int, length int64) (err error)

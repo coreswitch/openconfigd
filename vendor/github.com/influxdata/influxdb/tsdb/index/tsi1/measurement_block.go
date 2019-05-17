@@ -10,7 +10,6 @@ import (
 	"github.com/influxdata/influxdb/pkg/estimator"
 	"github.com/influxdata/influxdb/pkg/estimator/hll"
 	"github.com/influxdata/influxdb/pkg/rhh"
-	"github.com/influxdata/influxdb/tsdb"
 )
 
 // MeasurementBlockVersion is the version of the measurement block.
@@ -37,8 +36,6 @@ const (
 	// Measurement key block fields.
 	MeasurementNSize      = 8
 	MeasurementOffsetSize = 8
-
-	SeriesIDSize = 8
 )
 
 // Measurement errors.
@@ -144,8 +141,8 @@ func (blk *MeasurementBlock) Iterator() MeasurementIterator {
 	return &blockMeasurementIterator{data: blk.data[MeasurementFillSize:]}
 }
 
-// SeriesIDIterator returns an iterator for all series ids in a measurement.
-func (blk *MeasurementBlock) SeriesIDIterator(name []byte) tsdb.SeriesIDIterator {
+// seriesIDIterator returns an iterator for all series ids in a measurement.
+func (blk *MeasurementBlock) seriesIDIterator(name []byte) seriesIDIterator {
 	// Find measurement element.
 	e, ok := blk.Elem(name)
 	if !ok {
@@ -178,25 +175,23 @@ func (itr *blockMeasurementIterator) Next() MeasurementElem {
 
 // rawSeriesIterator iterates over a list of raw series data.
 type rawSeriesIDIterator struct {
-	prev uint64
-	n    uint64
+	prev uint32
+	n    uint32
 	data []byte
 }
 
-func (itr *rawSeriesIDIterator) Close() error { return nil }
-
-// Next returns the next decoded series.
-func (itr *rawSeriesIDIterator) Next() (tsdb.SeriesIDElem, error) {
+// next returns the next decoded series.
+func (itr *rawSeriesIDIterator) next() uint32 {
 	if len(itr.data) == 0 {
-		return tsdb.SeriesIDElem{}, nil
+		return 0
 	}
 
 	delta, n := binary.Uvarint(itr.data)
 	itr.data = itr.data[n:]
 
-	seriesID := itr.prev + uint64(delta)
+	seriesID := itr.prev + uint32(delta)
 	itr.prev = seriesID
-	return tsdb.SeriesIDElem{SeriesID: seriesID}, nil
+	return seriesID
 }
 
 // MeasurementBlockTrailer represents meta data at the end of a MeasurementBlock.
@@ -249,13 +244,13 @@ func ReadMeasurementBlockTrailer(data []byte) (MeasurementBlockTrailer, error) {
 	t.HashIndex.Offset, buf = int64(binary.BigEndian.Uint64(buf[0:8])), buf[8:]
 	t.HashIndex.Size, buf = int64(binary.BigEndian.Uint64(buf[0:8])), buf[8:]
 
-	// Read measurement sketch info.
+	// Read measurment sketch info.
 	t.Sketch.Offset, buf = int64(binary.BigEndian.Uint64(buf[0:8])), buf[8:]
 	t.Sketch.Size, buf = int64(binary.BigEndian.Uint64(buf[0:8])), buf[8:]
 
-	// Read tombstone measurement sketch info.
+	// Read tombstone measurment sketch info.
 	t.TSketch.Offset, buf = int64(binary.BigEndian.Uint64(buf[0:8])), buf[8:]
-	t.TSketch.Size = int64(binary.BigEndian.Uint64(buf[0:8]))
+	t.TSketch.Size, buf = int64(binary.BigEndian.Uint64(buf[0:8])), buf[8:]
 
 	return t, nil
 }
@@ -309,7 +304,7 @@ type MeasurementBlockElem struct {
 	}
 
 	series struct {
-		n    uint64 // series count
+		n    uint32 // series count
 		data []byte // serialized series data
 	}
 
@@ -335,41 +330,29 @@ func (e *MeasurementBlockElem) TagBlockSize() int64 { return e.tagBlock.size }
 func (e *MeasurementBlockElem) SeriesData() []byte { return e.series.data }
 
 // SeriesN returns the number of series associated with the measurement.
-func (e *MeasurementBlockElem) SeriesN() uint64 { return e.series.n }
+func (e *MeasurementBlockElem) SeriesN() uint32 { return e.series.n }
 
 // SeriesID returns series ID at an index.
-func (e *MeasurementBlockElem) SeriesID(i int) uint64 {
-	return binary.BigEndian.Uint64(e.series.data[i*SeriesIDSize:])
+func (e *MeasurementBlockElem) SeriesID(i int) uint32 {
+	return binary.BigEndian.Uint32(e.series.data[i*SeriesIDSize:])
 }
-
-func (e *MeasurementBlockElem) HasSeries() bool { return e.series.n > 0 }
 
 // SeriesIDs returns a list of decoded series ids.
 //
 // NOTE: This should be used for testing and diagnostics purposes only.
 // It requires loading the entire list of series in-memory.
-func (e *MeasurementBlockElem) SeriesIDs() []uint64 {
-	a := make([]uint64, 0, e.series.n)
-	e.ForEachSeriesID(func(id uint64) error {
-		a = append(a, id)
-		return nil
-	})
-	return a
-}
-
-func (e *MeasurementBlockElem) ForEachSeriesID(fn func(uint64) error) error {
-	var prev uint64
+func (e *MeasurementBlockElem) SeriesIDs() []uint32 {
+	a := make([]uint32, 0, e.series.n)
+	var prev uint32
 	for data := e.series.data; len(data) > 0; {
 		delta, n := binary.Uvarint(data)
 		data = data[n:]
 
-		seriesID := prev + uint64(delta)
-		if err := fn(seriesID); err != nil {
-			return err
-		}
+		seriesID := prev + uint32(delta)
+		a = append(a, seriesID)
 		prev = seriesID
 	}
-	return nil
+	return a
 }
 
 // Size returns the size of the element.
@@ -392,7 +375,7 @@ func (e *MeasurementBlockElem) UnmarshalBinary(data []byte) error {
 
 	// Parse series data.
 	v, n := binary.Uvarint(data)
-	e.series.n, data = uint64(v), data[n:]
+	e.series.n, data = uint32(v), data[n:]
 	sz, n = binary.Uvarint(data)
 	data = data[n:]
 	e.series.data, data = data[:sz], data[sz:]
@@ -422,7 +405,7 @@ func NewMeasurementBlockWriter() *MeasurementBlockWriter {
 }
 
 // Add adds a measurement with series and tag set offset/size.
-func (mw *MeasurementBlockWriter) Add(name []byte, deleted bool, offset, size int64, seriesIDs []uint64) {
+func (mw *MeasurementBlockWriter) Add(name []byte, deleted bool, offset, size int64, seriesIDs []uint32) {
 	mm := mw.mms[string(name)]
 	mm.deleted = deleted
 	mm.tagBlock.offset = offset
@@ -525,7 +508,11 @@ func (mw *MeasurementBlockWriter) WriteTo(w io.Writer) (n int64, err error) {
 	// Write trailer.
 	nn, err := t.WriteTo(w)
 	n += nn
-	return n, err
+	if err != nil {
+		return n, err
+	}
+
+	return n, nil
 }
 
 // writeMeasurementTo encodes a single measurement entry into w.
@@ -550,7 +537,7 @@ func (mw *MeasurementBlockWriter) writeMeasurementTo(w io.Writer, name []byte, m
 
 	// Write series data to buffer.
 	mw.buf.Reset()
-	var prev uint64
+	var prev uint32
 	for _, seriesID := range mm.seriesIDs {
 		delta := seriesID - prev
 
@@ -573,8 +560,11 @@ func (mw *MeasurementBlockWriter) writeMeasurementTo(w io.Writer, name []byte, m
 		return err
 	}
 	nn, err := mw.buf.WriteTo(w)
-	*n += nn
-	return err
+	if *n += nn; err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // writeSketchTo writes an estimator.Sketch into w, updating the number of bytes
@@ -597,7 +587,7 @@ type measurement struct {
 		offset int64
 		size   int64
 	}
-	seriesIDs []uint64
+	seriesIDs []uint32
 	offset    int64
 }
 

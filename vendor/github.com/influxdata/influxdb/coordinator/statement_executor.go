@@ -225,7 +225,10 @@ func (e *StatementExecutor) executeAlterRetentionPolicyStatement(stmt *influxql.
 	}
 
 	// Update the retention policy.
-	return e.MetaClient.UpdateRetentionPolicy(stmt.Database, stmt.Name, rpu, stmt.Default)
+	if err := e.MetaClient.UpdateRetentionPolicy(stmt.Database, stmt.Name, rpu, stmt.Default); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (e *StatementExecutor) executeCreateContinuousQueryStatement(q *influxql.CreateContinuousQueryStatement) error {
@@ -303,7 +306,11 @@ func (e *StatementExecutor) executeCreateRetentionPolicyStatement(stmt *influxql
 
 	// Create new retention policy.
 	_, err := e.MetaClient.CreateRetentionPolicy(stmt.Database, &spec, stmt.Default)
-	return err
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (e *StatementExecutor) executeCreateSubscriptionStatement(q *influxql.CreateSubscriptionStatement) error {
@@ -735,7 +742,7 @@ func (e *StatementExecutor) executeShowMeasurementsStatement(q *influxql.ShowMea
 		return ErrDatabaseNameRequired
 	}
 
-	names, err := e.TSDBStore.MeasurementNames(ctx.Authorizer, q.Database, q.Condition)
+	names, err := e.TSDBStore.MeasurementNames(q.Database, q.Condition)
 	if err != nil || len(names) == 0 {
 		return ctx.Send(&query.Result{
 			StatementID: ctx.StatementID,
@@ -779,10 +786,6 @@ func (e *StatementExecutor) executeShowMeasurementsStatement(q *influxql.ShowMea
 }
 
 func (e *StatementExecutor) executeShowMeasurementCardinalityStatement(stmt *influxql.ShowMeasurementCardinalityStatement) (models.Rows, error) {
-	if stmt.Database == "" {
-		return nil, ErrDatabaseNameRequired
-	}
-
 	n, err := e.TSDBStore.MeasurementsCardinality(stmt.Database)
 	if err != nil {
 		return nil, err
@@ -850,10 +853,6 @@ func (e *StatementExecutor) executeShowShardsStatement(stmt *influxql.ShowShards
 }
 
 func (e *StatementExecutor) executeShowSeriesCardinalityStatement(stmt *influxql.ShowSeriesCardinalityStatement) (models.Rows, error) {
-	if stmt.Database == "" {
-		return nil, ErrDatabaseNameRequired
-	}
-
 	n, err := e.TSDBStore.SeriesCardinality(stmt.Database)
 	if err != nil {
 		return nil, err
@@ -1379,7 +1378,7 @@ type TSDBStore interface {
 	DeleteSeries(database string, sources []influxql.Source, condition influxql.Expr) error
 	DeleteShard(id uint64) error
 
-	MeasurementNames(auth query.Authorizer, database string, cond influxql.Expr) ([][]byte, error)
+	MeasurementNames(database string, cond influxql.Expr) ([][]byte, error)
 	TagKeys(auth query.Authorizer, shardIDs []uint64, cond influxql.Expr) ([]tsdb.TagKeys, error)
 	TagValues(auth query.Authorizer, shardIDs []uint64, cond influxql.Expr) ([]tsdb.TagValues, error)
 

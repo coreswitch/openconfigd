@@ -426,16 +426,13 @@ func TestParseCommand_Use(t *testing.T) {
 
 	tests := []struct {
 		cmd string
-		db  string
 	}{
-		{cmd: "use db", db: "db"},
-		{cmd: " use db", db: "db"},
-		{cmd: "use db ", db: "db"},
-		{cmd: "use db;", db: "db"},
-		{cmd: "use db; ", db: "db"},
-		{cmd: "Use db", db: "db"},
-		{cmd: `Use "db"`, db: "db"},
-		{cmd: `Use "db db"`, db: "db db"},
+		{cmd: "use db"},
+		{cmd: " use db"},
+		{cmd: "use db "},
+		{cmd: "use db;"},
+		{cmd: "use db; "},
+		{cmd: "Use db"},
 	}
 
 	for _, test := range tests {
@@ -444,8 +441,8 @@ func TestParseCommand_Use(t *testing.T) {
 			t.Fatalf(`Got error %v for command %q, expected nil.`, err, test.cmd)
 		}
 
-		if m.Database != test.db {
-			t.Fatalf(`Command "%s" changed database to %q. Expected %s`, test.cmd, m.Database, test.db)
+		if m.Database != "db" {
+			t.Fatalf(`Command "use" changed database to %q. Expected db`, m.Database)
 		}
 	}
 }
@@ -659,7 +656,7 @@ func emptyTestServer() *httptest.Server {
 			switch stmt.(type) {
 			case *influxql.ShowDatabasesStatement:
 				if authorized {
-					io.WriteString(w, `{"results":[{"series":[{"name":"databases","columns":["name"],"values":[["db", "db db"]]}]}]}`)
+					io.WriteString(w, `{"results":[{"series":[{"name":"databases","columns":["name"],"values":[["db"]]}]}]}`)
 				} else {
 					w.WriteHeader(http.StatusUnauthorized)
 					io.WriteString(w, fmt.Sprintf(`{"error":"error authorizing query: %s not authorized to execute statement 'SHOW DATABASES', requires admin privilege"}`, user))

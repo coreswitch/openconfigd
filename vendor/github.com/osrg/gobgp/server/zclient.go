@@ -297,6 +297,9 @@ func newIPRouteBody(dst pathList) (body *zebra.IPRouteBody, isWithdraw bool) {
 	var pathId uint32
 	if plen == 0 {
 		pathId = path.GetNlri().PathIdentifier()
+		if pathId == 0 {
+			pathId = path.GetNlri().PathLocalIdentifier()
+		}
 		if pathId != 0 {
 			msgFlags |= zebra.MESSAGE_PATH_ID
 		}

@@ -515,6 +515,7 @@ func (a *auxIteratorFields) iterator(name string, typ influxql.DataType) Iterato
 			f.append(itr)
 			return itr
 		default:
+			break
 		}
 	}
 
@@ -797,7 +798,7 @@ func newIteratorOptionsStmt(stmt *influxql.SelectStatement, sopt SelectOptions) 
 	return opt, nil
 }
 
-func newIteratorOptionsSubstatement(ctx context.Context, stmt *influxql.SelectStatement, opt IteratorOptions) (IteratorOptions, error) {
+func newIteratorOptionsSubstatement(stmt *influxql.SelectStatement, opt IteratorOptions) (IteratorOptions, error) {
 	subOpt, err := newIteratorOptionsStmt(stmt, SelectOptions{})
 	if err != nil {
 		return IteratorOptions{}, err
@@ -808,11 +809,6 @@ func newIteratorOptionsSubstatement(ctx context.Context, stmt *influxql.SelectSt
 	}
 	if subOpt.EndTime > opt.EndTime {
 		subOpt.EndTime = opt.EndTime
-	}
-	if !subOpt.Interval.IsZero() && subOpt.EndTime == influxql.MaxTime {
-		if now := ctx.Value("now"); now != nil {
-			subOpt.EndTime = now.(time.Time).UnixNano()
-		}
 	}
 	// Propagate the dimensions to the inner subquery.
 	subOpt.Dimensions = opt.Dimensions
@@ -1105,28 +1101,10 @@ func encodeIteratorOptions(opt *IteratorOptions) *internal.IteratorOptions {
 
 	// Set condition, if set.
 	if opt.Condition != nil {
-		pb.Condition = proto.String(encodeConditionExpr(opt.Condition))
+		pb.Condition = proto.String(opt.Condition.String())
 	}
 
 	return pb
-}
-
-// encodeConditionExpr will encode the condition to a string and will also
-// fix the condition by adding parenthesis if the AST was improperly created.
-func encodeConditionExpr(expr influxql.Expr) string {
-	cond := influxql.RewriteExpr(influxql.CloneExpr(expr), func(expr influxql.Expr) influxql.Expr {
-		if expr, ok := expr.(*influxql.BinaryExpr); ok {
-			if e, ok := expr.LHS.(*influxql.BinaryExpr); ok && e.Op.Precedence() < expr.Op.Precedence() {
-				expr.LHS = &influxql.ParenExpr{Expr: expr.LHS}
-			}
-			if e, ok := expr.RHS.(*influxql.BinaryExpr); ok && e.Op.Precedence() <= expr.Op.Precedence() {
-				expr.RHS = &influxql.ParenExpr{Expr: expr.RHS}
-			}
-			return expr
-		}
-		return expr
-	})
-	return cond.String()
 }
 
 func decodeIteratorOptions(pb *internal.IteratorOptions) (*IteratorOptions, error) {

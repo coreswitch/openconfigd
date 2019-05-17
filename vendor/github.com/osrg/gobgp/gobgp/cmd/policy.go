@@ -333,12 +333,16 @@ func printStatement(indent int, s *table.Statement) {
 			fmt.Printf("%sExtCommunitySet: %s %s\n", ind, t.Option(), t.Name())
 		case *table.LargeCommunityCondition:
 			fmt.Printf("%sLargeCommunitySet: %s %s\n", ind, t.Option(), t.Name())
+		case *table.NextHopCondition:
+			fmt.Printf("%sNextHopInList: %s\n", ind, t.String())
 		case *table.AsPathLengthCondition:
 			fmt.Printf("%sAsPathLength: %s\n", ind, t.String())
 		case *table.RpkiValidationCondition:
 			fmt.Printf("%sRPKI result: %s\n", ind, t.String())
 		case *table.RouteTypeCondition:
 			fmt.Printf("%sRoute Type: %s\n", ind, t.String())
+		case *table.AfiSafiInCondition:
+			fmt.Printf("%sAFI SAFI In: %s\n", ind, t.String())
 		}
 	}
 
@@ -480,7 +484,7 @@ func modCondition(name, op string, args []string) error {
 	}
 	usage := fmt.Sprintf("usage: gobgp policy statement %s %s condition", name, op)
 	if len(args) < 1 {
-		return fmt.Errorf("%s { prefix | neighbor | as-path | community | ext-community | large-community | as-path-length | rpki | route-type }", usage)
+		return fmt.Errorf("%s { prefix | neighbor | as-path | community | ext-community | large-community | as-path-length | rpki | route-type | next-hop-in-list | afi-safi-in }", usage)
 	}
 	typ := args[0]
 	args = args[1:]
@@ -637,8 +641,20 @@ func modCondition(name, op string, args []string) error {
 		default:
 			return err
 		}
+	case "next-hop-in-list":
+		stmt.Conditions.BgpConditions.NextHopInList = args
+	case "afi-safi-in":
+		afiSafisInList := make([]config.AfiSafiType, 0, len(args))
+		for _, arg := range args {
+			afiSafi := config.AfiSafiType(arg)
+			if err := afiSafi.Validate(); err != nil {
+				return err
+			}
+			afiSafisInList = append(afiSafisInList, afiSafi)
+		}
+		stmt.Conditions.BgpConditions.AfiSafiInList = afiSafisInList
 	default:
-		return fmt.Errorf("%s { prefix | neighbor | as-path | community | ext-community | large-community | as-path-length | rpki | route-type }", usage)
+		return fmt.Errorf("%s { prefix | neighbor | as-path | community | ext-community | large-community | as-path-length | rpki | route-type | next-hop-in-list | afi-safi-in }", usage)
 	}
 
 	t, err := table.NewStatement(stmt)

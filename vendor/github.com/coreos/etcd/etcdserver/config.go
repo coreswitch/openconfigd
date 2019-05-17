@@ -64,8 +64,6 @@ type ServerConfig struct {
 	ClientCertAuthEnabled bool
 
 	AuthToken string
-
-	Debug bool
 }
 
 // VerifyBootstrap sanity-checks the initial config for bootstrap case

@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func Map(path string, sz int64) ([]byte, error) {
+func Map(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -23,12 +23,7 @@ func Map(path string, sz int64) ([]byte, error) {
 		return nil, nil
 	}
 
-	// Use file size if map size is not passed in.
-	if sz == 0 {
-		sz = fi.Size()
-	}
-
-	data, err := unix.Mmap(int(f.Fd()), 0, int(sz), syscall.PROT_READ, syscall.MAP_SHARED)
+	data, err := unix.Mmap(int(f.Fd()), 0, int(fi.Size()), syscall.PROT_READ, syscall.MAP_SHARED)
 	if err != nil {
 		return nil, err
 	}

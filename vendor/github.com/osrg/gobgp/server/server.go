@@ -524,11 +524,12 @@ func (s *BgpServer) filterpath(peer *Peer, path, old *table.Path) *table.Path {
 		return nil
 	}
 
+	options := &table.PolicyOptions{
+		Info:       peer.fsm.peerInfo,
+		OldNextHop: path.GetNexthop(),
+	}
 	path = table.UpdatePathAttrs(peer.fsm.gConf, peer.fsm.pConf, peer.fsm.peerInfo, path)
 
-	options := &table.PolicyOptions{
-		Info: peer.fsm.peerInfo,
-	}
 	if v := s.roaManager.validate(path); v != nil {
 		options.ValidationResult = v
 	}
@@ -784,9 +785,7 @@ func (s *BgpServer) getBestFromLocal(peer *Peer, rfList []bgp.RouteFamily) ([]*t
 	}
 	if peer.isGracefulRestartEnabled() {
 		for _, family := range rfList {
-			if _, ok := peer.fsm.rfMap[family]; ok {
-				pathList = append(pathList, table.NewEOR(family))
-			}
+			pathList = append(pathList, table.NewEOR(family))
 		}
 	}
 	return pathList, filtered
@@ -893,15 +892,15 @@ func (server *BgpServer) propagateUpdate(peer *Peer, pathList []*table.Path) {
 			// graph that is derived from Route Target membership information.
 			if peer != nil && path != nil && path.GetRouteFamily() == bgp.RF_RTC_UC {
 				rt := path.GetNlri().(*bgp.RouteTargetMembershipNLRI).RouteTarget
-				fs := make([]bgp.RouteFamily, 0, len(peer.configuredRFlist()))
-				for _, f := range peer.configuredRFlist() {
+				fs := make([]bgp.RouteFamily, 0, len(peer.negotiatedRFList()))
+				for _, f := range peer.negotiatedRFList() {
 					if f != bgp.RF_RTC_UC {
 						fs = append(fs, f)
 					}
 				}
 				var candidates []*table.Path
 				if path.IsWithdraw {
-					candidates, _ = server.getBestFromLocal(peer, peer.configuredRFlist())
+					candidates, _ = server.getBestFromLocal(peer, fs)
 				} else {
 					candidates = server.globalRib.GetBestPathList(peer.TableID(), 0, fs)
 				}
@@ -990,7 +989,20 @@ func (server *BgpServer) propagateUpdateToNeighbors(source *Peer, newPath *table
 			return family
 		}()
 		if targetPeer.isAddPathSendEnabled(f) {
-			bestList = []*table.Path{newPath}
+			clone := newPath.Clone(newPath.IsWithdraw)
+			if newPath.IsWithdraw {
+				for _, dst := range dsts {
+					for _, path := range dst.OldKnownPathList {
+						if path.GetSource().Equal(newPath.GetSource()) {
+							extCom := path.GetExtCommunities()
+							if extCom != nil {
+								clone.SetExtCommunities(extCom, false)
+							}
+						}
+					}
+				}
+			}
+			bestList = []*table.Path{clone}
 			oldList = nil
 		} else if targetPeer.isRouteServerClient() {
 			bestList, oldList, _ = dstsToPaths(targetPeer.TableID(), targetPeer.AS(), dsts)
@@ -1143,13 +1155,13 @@ func (server *BgpServer) handleFSMMessage(peer *Peer, e *FsmMsg) {
 				if c := peer.fsm.pConf.GetAfiSafi(bgp.RF_RTC_UC); y && !peer.fsm.pConf.GracefulRestart.State.PeerRestarting && c.RouteTargetMembership.Config.DeferralTime > 0 {
 					pathList, _ = server.getBestFromLocal(peer, []bgp.RouteFamily{bgp.RF_RTC_UC})
 					t := c.RouteTargetMembership.Config.DeferralTime
-					for _, f := range peer.configuredRFlist() {
+					for _, f := range peer.negotiatedRFList() {
 						if f != bgp.RF_RTC_UC {
 							time.AfterFunc(time.Second*time.Duration(t), deferralExpiredFunc(f))
 						}
 					}
 				} else {
-					pathList, _ = server.getBestFromLocal(peer, peer.configuredRFlist())
+					pathList, _ = server.getBestFromLocal(peer, peer.negotiatedRFList())
 				}
 
 				if len(pathList) > 0 {
@@ -1259,7 +1271,7 @@ func (server *BgpServer) handleFSMMessage(peer *Peer, e *FsmMsg) {
 							if !p.isGracefulRestartEnabled() {
 								continue
 							}
-							paths, _ := server.getBestFromLocal(p, p.configuredRFlist())
+							paths, _ := server.getBestFromLocal(p, p.negotiatedRFList())
 							if len(paths) > 0 {
 								sendFsmOutgoingMsg(p, paths, nil, false)
 							}
@@ -1295,8 +1307,8 @@ func (server *BgpServer) handleFSMMessage(peer *Peer, e *FsmMsg) {
 						"Topic": "Peer",
 						"Key":   peer.ID(),
 					}).Debug("received route-target eor. flash non-route-target NLRIs")
-					families := make([]bgp.RouteFamily, 0, len(peer.configuredRFlist()))
-					for _, f := range peer.configuredRFlist() {
+					families := make([]bgp.RouteFamily, 0, len(peer.negotiatedRFList()))
+					for _, f := range peer.negotiatedRFList() {
 						if f != bgp.RF_RTC_UC {
 							families = append(families, f)
 						}
@@ -1754,7 +1766,7 @@ func (s *BgpServer) softResetOut(addr string, family bgp.RouteFamily, deferral b
 
 		families := []bgp.RouteFamily{family}
 		if family == bgp.RouteFamily(0) {
-			families = peer.configuredRFlist()
+			families = peer.negotiatedRFList()
 		}
 
 		if deferral {

@@ -40,8 +40,7 @@ func newSumBatchCursor(cur tsdb.Cursor) tsdb.Cursor {
 	case tsdb.UnsignedBatchCursor:
 		return &unsignedSumBatchCursor{UnsignedBatchCursor: cur}
 	default:
-		// TODO(sgc): propagate an error instead?
-		return nil
+		panic(fmt.Sprintf("unreachable: %T", cur))
 	}
 }
 

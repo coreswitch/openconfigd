@@ -10,9 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -26,8 +24,6 @@ import (
 
 var verboseServerLogs bool
 var indexType string
-var cleanupData bool
-var seed int64
 
 // Server represents a test wrapper for run.Server.
 type Server interface {
@@ -107,7 +103,10 @@ func (s *RemoteServer) CreateDatabaseAndRetentionPolicy(db string, rp *meta.Rete
 	}
 
 	_, err := s.HTTPPost(s.URL()+"/query?q="+stmt, nil)
-	return err
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *RemoteServer) CreateSubscription(database, rp, name, mode string, destinations []string) error {
@@ -120,14 +119,20 @@ func (s *RemoteServer) CreateSubscription(database, rp, name, mode string, desti
 		name, database, rp, mode, strings.Join(dests, ","))
 
 	_, err := s.HTTPPost(s.URL()+"/query?q="+stmt, nil)
-	return err
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *RemoteServer) DropDatabase(db string) error {
 	stmt := fmt.Sprintf("DROP+DATABASE+%s", db)
 
 	_, err := s.HTTPPost(s.URL()+"/query?q="+stmt, nil)
-	return err
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Reset attempts to remove all database state by dropping everything
@@ -157,7 +162,7 @@ func (s *RemoteServer) WritePoints(database, retentionPolicy string, consistency
 }
 
 // NewServer returns a new instance of Server.
-func NewServer(c *Config) Server {
+func NewServer(c *run.Config) Server {
 	buildInfo := &run.BuildInfo{
 		Version: "testServer",
 		Commit:  "testCommit",
@@ -181,7 +186,7 @@ func NewServer(c *Config) Server {
 	}
 
 	// Otherwise create a local server
-	srv, _ := run.NewServer(c.Config, buildInfo)
+	srv, _ := run.NewServer(c, buildInfo)
 	s := LocalServer{
 		client: &client{},
 		Server: srv,
@@ -192,7 +197,7 @@ func NewServer(c *Config) Server {
 }
 
 // OpenServer opens a test server.
-func OpenServer(c *Config) Server {
+func OpenServer(c *run.Config) Server {
 	s := NewServer(c)
 	configureLogging(s)
 	if err := s.Open(); err != nil {
@@ -202,8 +207,8 @@ func OpenServer(c *Config) Server {
 }
 
 // OpenServerWithVersion opens a test server with a specific version.
-func OpenServerWithVersion(c *Config, version string) Server {
-	// We can't change the version of a remote server.  The test needs to
+func OpenServerWithVersion(c *run.Config, version string) Server {
+	// We can't change the versino of a remote server.  The test needs to
 	// be skipped if using this func.
 	if RemoteEnabled() {
 		panic("OpenServerWithVersion not support with remote server")
@@ -214,7 +219,7 @@ func OpenServerWithVersion(c *Config, version string) Server {
 		Commit:  "",
 		Branch:  "",
 	}
-	srv, _ := run.NewServer(c.Config, buildInfo)
+	srv, _ := run.NewServer(c, buildInfo)
 	s := LocalServer{
 		client: &client{},
 		Server: srv,
@@ -231,9 +236,9 @@ func OpenServerWithVersion(c *Config, version string) Server {
 }
 
 // OpenDefaultServer opens a test server with a default database & retention policy.
-func OpenDefaultServer(c *Config) Server {
+func OpenDefaultServer(c *run.Config) Server {
 	s := OpenServer(c)
-	if err := s.CreateDatabaseAndRetentionPolicy("db0", NewRetentionPolicySpec("rp0", 1, 0), true); err != nil {
+	if err := s.CreateDatabaseAndRetentionPolicy("db0", newRetentionPolicySpec("rp0", 1, 0), true); err != nil {
 		panic(err)
 	}
 	return s
@@ -245,16 +250,7 @@ type LocalServer struct {
 	*run.Server
 
 	*client
-	Config *Config
-}
-
-// Open opens the server. If running this test on a 32-bit platform it reduces
-// the size of series files so that they can all be addressable in the process.
-func (s *LocalServer) Open() error {
-	if runtime.GOARCH == "386" {
-		s.Server.TSDBStore.SeriesFileMaxSize = 1 << 27 // 128MB
-	}
-	return s.Server.Open()
+	Config *run.Config
 }
 
 // Close shuts down the server and removes all temporary paths.
@@ -265,13 +261,12 @@ func (s *LocalServer) Close() {
 	if err := s.Server.Close(); err != nil {
 		panic(err.Error())
 	}
-
-	if cleanupData {
-		if err := os.RemoveAll(s.Config.rootPath); err != nil {
-			panic(err.Error())
-		}
+	if err := os.RemoveAll(s.Config.Meta.Dir); err != nil {
+		panic(err.Error())
 	}
-
+	if err := os.RemoveAll(s.Config.Data.Dir); err != nil {
+		panic(err.Error())
+	}
 	// Nil the server so our deadlock detector goroutine can determine if we completed writes
 	// without timing out
 	s.Server = nil
@@ -343,11 +338,6 @@ func (s *LocalServer) Reset() error {
 func (s *LocalServer) WritePoints(database, retentionPolicy string, consistencyLevel models.ConsistencyLevel, user meta.User, points []models.Point) error {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
-	if s.PointsWriter == nil {
-		return fmt.Errorf("server closed")
-	}
-
 	return s.PointsWriter.WritePoints(database, retentionPolicy, consistencyLevel, user, points)
 }
 
@@ -482,30 +472,17 @@ func (s *client) MustWrite(db, rp, body string, params url.Values) string {
 	return results
 }
 
-// Config is a test wrapper around a run.Config. It also contains a root temp
-// directory, making cleanup easier.
-type Config struct {
-	rootPath string
-	*run.Config
-}
-
 // NewConfig returns the default config with temporary paths.
-func NewConfig() *Config {
-	root, err := ioutil.TempDir("", "tests-influxdb-")
-	if err != nil {
-		panic(err)
-	}
-
-	c := &Config{rootPath: root, Config: run.NewConfig()}
+func NewConfig() *run.Config {
+	c := run.NewConfig()
 	c.BindAddress = "127.0.0.1:0"
 	c.ReportingDisabled = true
 	c.Coordinator.WriteTimeout = toml.Duration(30 * time.Second)
-
-	c.Meta.Dir = filepath.Join(c.rootPath, "meta")
+	c.Meta.Dir = MustTempFile()
 	c.Meta.LoggingEnabled = verboseServerLogs
 
-	c.Data.Dir = filepath.Join(c.rootPath, "data")
-	c.Data.WALDir = filepath.Join(c.rootPath, "wal")
+	c.Data.Dir = MustTempFile()
+	c.Data.WALDir = MustTempFile()
 	c.Data.QueryLogEnabled = verboseServerLogs
 	c.Data.TraceLoggingEnabled = verboseServerLogs
 	c.Data.Index = indexType
@@ -521,8 +498,7 @@ func NewConfig() *Config {
 	return c
 }
 
-// form a correct retention policy given name, replication factor and duration
-func NewRetentionPolicySpec(name string, rf int, duration time.Duration) *meta.RetentionPolicySpec {
+func newRetentionPolicySpec(name string, rf int, duration time.Duration) *meta.RetentionPolicySpec {
 	return &meta.RetentionPolicySpec{Name: name, ReplicaN: &rf, Duration: &duration}
 }
 
@@ -566,12 +542,27 @@ func MustReadAll(r io.Reader) []byte {
 	return b
 }
 
+// MustTempFile returns a path to a temporary file.
+func MustTempFile() string {
+	f, err := ioutil.TempFile("", "influxd-")
+	if err != nil {
+		panic(err)
+	}
+	f.Close()
+	os.Remove(f.Name())
+	return f.Name()
+}
+
 func RemoteEnabled() bool {
 	return os.Getenv("URL") != ""
 }
 
 func expectPattern(exp, act string) bool {
-	return regexp.MustCompile(exp).MatchString(act)
+	re := regexp.MustCompile(exp)
+	if !re.MatchString(act) {
+		return false
+	}
+	return true
 }
 
 type Query struct {
@@ -722,7 +713,7 @@ func writeTestData(s Server, t *Test) error {
 			w.rp = t.retentionPolicy()
 		}
 
-		if err := s.CreateDatabaseAndRetentionPolicy(w.db, NewRetentionPolicySpec(w.rp, 1, 0), true); err != nil {
+		if err := s.CreateDatabaseAndRetentionPolicy(w.db, newRetentionPolicySpec(w.rp, 1, 0), true); err != nil {
 			return err
 		}
 		if res, err := s.Write(w.db, w.rp, w.data, t.params); err != nil {

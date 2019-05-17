@@ -2,7 +2,7 @@ package uuid
 
 import (
 	"errors"
-	"github.com/stretchr/testify/assert"
+	"gopkg.in/stretchr/testify.v1/assert"
 	"sync"
 	"testing"
 	"time"
@@ -15,20 +15,24 @@ type save struct {
 	sync.Mutex
 }
 
+func (o *save) Init() Saver {
+	return o
+}
+
 func (o *save) Save(pStore Store) {
 	o.Lock()
 	defer o.Unlock()
 	o.saved = true
 }
 
-func (o *save) Read() (error, Store) {
+func (o *save) Read() (Store, error) {
 	if o.store != nil {
-		return nil, *o.store
+		return *o.store, nil
 	}
 	if o.err != nil {
-		return o.err, Store{}
+		return Store{}, o.err
 	}
-	return nil, Store{}
+	return Store{}, nil
 }
 
 func TestRegisterSaver(t *testing.T) {
@@ -38,14 +42,20 @@ func TestRegisterSaver(t *testing.T) {
 	RegisterSaver(saver)
 
 	assert.NotNil(t, generator.Saver, "Saver should save")
+
+	assert.Panics(t, func() {
+		RegisterSaver(saver)
+	})
+
 	registerDefaultGenerator()
 }
 
 func TestSaverRead(t *testing.T) {
 	now, node := registerTestGenerator(Now().Sub(time.Second), []byte{0xaa})
 
-	storageStamp := registerSaver(now.Sub(time.Second*2), node)
+	storageStamp, err := registerSaver(now.Sub(time.Second*2), node)
 
+	assert.NoError(t, err)
 	assert.NotNil(t, generator.Saver, "Saver should save")
 	assert.NotNil(t, generator.Store, "Default generator store should not return an empty store")
 	assert.Equal(t, Sequence(2), generator.Store.Sequence, "Successfull read should have actual given sequence")
@@ -85,10 +95,11 @@ func TestStore_String(t *testing.T) {
 	assert.Equal(t, "Timestamp[2167-05-04 23:34:33.709551916 +0000 UTC]-Sequence[2]-Node[ddeeffaabb]", store.String(), "The output store string should match")
 }
 
-func registerSaver(pStorageStamp Timestamp, pNode Node) (storageStamp Timestamp) {
-	storageStamp = pStorageStamp
+func registerSaver(storageStamp Timestamp, pNode Node) (ss Timestamp, err error) {
+	ss = storageStamp
 
-	saver := &save{store: &Store{Node: pNode, Sequence: 2, Timestamp: pStorageStamp}}
-	RegisterSaver(saver)
+	once = new(sync.Once)
+	saver := &save{store: &Store{Node: pNode, Sequence: 2, Timestamp: storageStamp}}
+	err = RegisterSaver(saver)
 	return
 }

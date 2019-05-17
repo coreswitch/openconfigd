@@ -2,11 +2,11 @@
 package precreator // import "github.com/influxdata/influxdb/services/precreator"
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
-	"github.com/influxdata/influxdb/logger"
-	"go.uber.org/zap"
+	"github.com/uber-go/zap"
 )
 
 // Service manages the shard precreation service.
@@ -14,7 +14,7 @@ type Service struct {
 	checkInterval time.Duration
 	advancePeriod time.Duration
 
-	Logger *zap.Logger
+	Logger zap.Logger
 
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -25,16 +25,18 @@ type Service struct {
 }
 
 // NewService returns an instance of the precreation service.
-func NewService(c Config) *Service {
-	return &Service{
+func NewService(c Config) (*Service, error) {
+	s := Service{
 		checkInterval: time.Duration(c.CheckInterval),
 		advancePeriod: time.Duration(c.AdvancePeriod),
-		Logger:        zap.NewNop(),
+		Logger:        zap.New(zap.NullEncoder()),
 	}
+
+	return &s, nil
 }
 
 // WithLogger sets the logger for the service.
-func (s *Service) WithLogger(log *zap.Logger) {
+func (s *Service) WithLogger(log zap.Logger) {
 	s.Logger = log.With(zap.String("service", "shard-precreation"))
 }
 
@@ -44,9 +46,8 @@ func (s *Service) Open() error {
 		return nil
 	}
 
-	s.Logger.Info("Starting precreation service",
-		logger.DurationLiteral("check_interval", s.checkInterval),
-		logger.DurationLiteral("advance_period", s.advancePeriod))
+	s.Logger.Info(fmt.Sprintf("Starting precreation service with check interval of %s, advance period of %s",
+		s.checkInterval, s.advancePeriod))
 
 	s.done = make(chan struct{})
 
@@ -76,10 +77,10 @@ func (s *Service) runPrecreation() {
 		select {
 		case <-time.After(s.checkInterval):
 			if err := s.precreate(time.Now().UTC()); err != nil {
-				s.Logger.Info("Failed to precreate shards", zap.Error(err))
+				s.Logger.Info(fmt.Sprintf("failed to precreate shards: %s", err.Error()))
 			}
 		case <-s.done:
-			s.Logger.Info("Terminating precreation service")
+			s.Logger.Info("Precreation service terminating")
 			return
 		}
 	}
@@ -88,5 +89,8 @@ func (s *Service) runPrecreation() {
 // precreate performs actual resource precreation.
 func (s *Service) precreate(now time.Time) error {
 	cutoff := now.Add(s.advancePeriod).UTC()
-	return s.MetaClient.PrecreateShardGroups(now, cutoff)
+	if err := s.MetaClient.PrecreateShardGroups(now, cutoff); err != nil {
+		return err
+	}
+	return nil
 }

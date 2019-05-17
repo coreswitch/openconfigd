@@ -13,7 +13,6 @@ import (
 
 	"github.com/influxdata/influxdb"
 	"github.com/influxdata/influxdb/coordinator"
-	"github.com/influxdata/influxdb/logger"
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/monitor"
 	"github.com/influxdata/influxdb/query"
@@ -31,7 +30,7 @@ import (
 	"github.com/influxdata/influxdb/tcp"
 	"github.com/influxdata/influxdb/tsdb"
 	client "github.com/influxdata/usage-client/v1"
-	"go.uber.org/zap"
+	"github.com/uber-go/zap"
 
 	// Initialize the engine & index packages
 	"github.com/influxdata/influxdb/services/storage"
@@ -65,7 +64,7 @@ type Server struct {
 	BindAddress string
 	Listener    net.Listener
 
-	Logger *zap.Logger
+	Logger zap.Logger
 
 	MetaClient *meta.Client
 
@@ -143,7 +142,10 @@ func NewServer(c *Config, buildInfo *BuildInfo) (*Server, error) {
 
 		BindAddress: bind,
 
-		Logger: logger.New(os.Stderr),
+		Logger: zap.New(
+			zap.NewTextEncoder(),
+			zap.Output(os.Stderr),
+		),
 
 		MetaClient: meta.NewClient(c.Meta),
 
@@ -232,7 +234,7 @@ func (s *Server) appendSnapshotterService() {
 // SetLogOutput sets the logger used for all messages. It must not be called
 // after the Open method has been called.
 func (s *Server) SetLogOutput(w io.Writer) {
-	s.Logger = logger.New(w)
+	s.Logger = zap.New(zap.NewTextEncoder(), zap.Output(zap.AddSync(w)))
 }
 
 func (s *Server) appendMonitorService() {
@@ -321,7 +323,11 @@ func (s *Server) appendPrecreatorService(c precreator.Config) error {
 	if !c.Enabled {
 		return nil
 	}
-	srv := precreator.NewService(c)
+	srv, err := precreator.NewService(c)
+	if err != nil {
+		return err
+	}
+
 	srv.MetaClient = s.MetaClient
 	s.Services = append(s.Services, srv)
 	return nil
@@ -557,7 +563,7 @@ func (s *Server) reportServer() {
 
 // Service represents a service attached to the server.
 type Service interface {
-	WithLogger(log *zap.Logger)
+	WithLogger(log zap.Logger)
 	Open() error
 	Close() error
 }

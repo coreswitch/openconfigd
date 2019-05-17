@@ -10,7 +10,6 @@ import (
 	"github.com/influxdata/influxdb/query"
 	"github.com/influxdata/influxdb/tsdb"
 	"github.com/influxdata/influxql"
-	"github.com/opentracing/opentracing-go"
 )
 
 var (
@@ -54,16 +53,9 @@ type indexSeriesCursor struct {
 }
 
 func newIndexSeriesCursor(ctx context.Context, req *ReadRequest, shards []*tsdb.Shard) (*indexSeriesCursor, error) {
-	span := opentracing.SpanFromContext(ctx)
-	if span != nil {
-		span = opentracing.StartSpan("index_cursor.create", opentracing.ChildOf(span.Context()))
-		defer span.Finish()
-	}
-
 	opt := query.IteratorOptions{
 		Aux:        []influxql.VarRef{{Val: "key"}},
-		Authorizer: query.OpenAuthorizer,
-		Ascending:  true,
+		Authorizer: query.OpenAuthorizer{},
 		Ordered:    true,
 	}
 	p := &indexSeriesCursor{row: seriesRow{shards: shards}}
@@ -91,10 +83,10 @@ func newIndexSeriesCursor(ctx context.Context, req *ReadRequest, shards []*tsdb.
 		}
 	}
 
-	// TODO(sgc): tsdb.Store or tsdb.ShardGroup should provide an API to enumerate series efficiently
 	sg := tsdb.Shards(shards)
 	var itr query.Iterator
 	if itr, err = sg.CreateIterator(ctx, &influxql.Measurement{SystemIterator: "_series"}, opt); itr != nil && err == nil {
+		// TODO(sgc): need to rethink how we enumerate series across shards; dedupe is inefficient
 		itr = query.NewDedupeIterator(itr)
 
 		if p.sitr, err = toFloatIterator(itr); err != nil {
@@ -158,7 +150,7 @@ RETRY:
 		keyb := []byte(key)
 		mm, _ := models.ParseName(keyb)
 		c.row.measurement = string(mm)
-		c.tags = models.ParseTags(keyb)
+		c.tags, _ = models.ParseTags(keyb)
 
 		c.filterset = mapValuer{"_name": c.row.measurement}
 		for _, tag := range c.tags {
@@ -225,14 +217,13 @@ func (c *limitSeriesCursor) Next() *seriesRow {
 
 type groupSeriesCursor struct {
 	seriesCursor
-	ctx  context.Context
 	rows []seriesRow
 	keys [][]byte
 	f    bool
 }
 
 func newGroupSeriesCursor(ctx context.Context, cur seriesCursor, keys []string) *groupSeriesCursor {
-	g := &groupSeriesCursor{seriesCursor: cur, ctx: ctx}
+	g := &groupSeriesCursor{seriesCursor: cur}
 
 	g.keys = make([][]byte, 0, len(keys))
 	for _, k := range keys {
@@ -257,12 +248,6 @@ func (c *groupSeriesCursor) Next() *seriesRow {
 }
 
 func (c *groupSeriesCursor) sort() {
-	span := opentracing.SpanFromContext(c.ctx)
-	if span != nil {
-		span = opentracing.StartSpan("group_series_cursor.sort", opentracing.ChildOf(span.Context()))
-		defer span.Finish()
-	}
-
 	var rows []seriesRow
 	row := c.seriesCursor.Next()
 	for row != nil {
@@ -283,10 +268,6 @@ func (c *groupSeriesCursor) sort() {
 
 		return false
 	})
-
-	if span != nil {
-		span.SetTag("rows", len(rows))
-	}
 
 	c.rows = rows
 

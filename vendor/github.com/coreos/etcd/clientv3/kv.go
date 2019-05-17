@@ -18,7 +18,6 @@ import (
 	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
 
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 )
 
 type (
@@ -89,24 +88,15 @@ func (resp *TxnResponse) OpResponse() OpResponse {
 }
 
 type kv struct {
-	remote   pb.KVClient
-	callOpts []grpc.CallOption
+	remote pb.KVClient
 }
 
 func NewKV(c *Client) KV {
-	api := &kv{remote: RetryKVClient(c)}
-	if c != nil {
-		api.callOpts = c.callOpts
-	}
-	return api
+	return &kv{remote: RetryKVClient(c)}
 }
 
-func NewKVFromKVClient(remote pb.KVClient, c *Client) KV {
-	api := &kv{remote: remote}
-	if c != nil {
-		api.callOpts = c.callOpts
-	}
-	return api
+func NewKVFromKVClient(remote pb.KVClient) KV {
+	return &kv{remote: remote}
 }
 
 func (kv *kv) Put(ctx context.Context, key, val string, opts ...OpOption) (*PutResponse, error) {
@@ -125,7 +115,7 @@ func (kv *kv) Delete(ctx context.Context, key string, opts ...OpOption) (*Delete
 }
 
 func (kv *kv) Compact(ctx context.Context, rev int64, opts ...CompactOption) (*CompactResponse, error) {
-	resp, err := kv.remote.Compact(ctx, OpCompact(rev, opts...).toRequest(), kv.callOpts...)
+	resp, err := kv.remote.Compact(ctx, OpCompact(rev, opts...).toRequest())
 	if err != nil {
 		return nil, toErr(ctx, err)
 	}
@@ -134,9 +124,8 @@ func (kv *kv) Compact(ctx context.Context, rev int64, opts ...CompactOption) (*C
 
 func (kv *kv) Txn(ctx context.Context) Txn {
 	return &txn{
-		kv:       kv,
-		ctx:      ctx,
-		callOpts: kv.callOpts,
+		kv:  kv,
+		ctx: ctx,
 	}
 }
 
@@ -145,27 +134,27 @@ func (kv *kv) Do(ctx context.Context, op Op) (OpResponse, error) {
 	switch op.t {
 	case tRange:
 		var resp *pb.RangeResponse
-		resp, err = kv.remote.Range(ctx, op.toRangeRequest(), kv.callOpts...)
+		resp, err = kv.remote.Range(ctx, op.toRangeRequest())
 		if err == nil {
 			return OpResponse{get: (*GetResponse)(resp)}, nil
 		}
 	case tPut:
 		var resp *pb.PutResponse
 		r := &pb.PutRequest{Key: op.key, Value: op.val, Lease: int64(op.leaseID), PrevKv: op.prevKV, IgnoreValue: op.ignoreValue, IgnoreLease: op.ignoreLease}
-		resp, err = kv.remote.Put(ctx, r, kv.callOpts...)
+		resp, err = kv.remote.Put(ctx, r)
 		if err == nil {
 			return OpResponse{put: (*PutResponse)(resp)}, nil
 		}
 	case tDeleteRange:
 		var resp *pb.DeleteRangeResponse
 		r := &pb.DeleteRangeRequest{Key: op.key, RangeEnd: op.end, PrevKv: op.prevKV}
-		resp, err = kv.remote.DeleteRange(ctx, r, kv.callOpts...)
+		resp, err = kv.remote.DeleteRange(ctx, r)
 		if err == nil {
 			return OpResponse{del: (*DeleteResponse)(resp)}, nil
 		}
 	case tTxn:
 		var resp *pb.TxnResponse
-		resp, err = kv.remote.Txn(ctx, op.toTxnRequest(), kv.callOpts...)
+		resp, err = kv.remote.Txn(ctx, op.toTxnRequest())
 		if err == nil {
 			return OpResponse{txn: (*TxnResponse)(resp)}, nil
 		}

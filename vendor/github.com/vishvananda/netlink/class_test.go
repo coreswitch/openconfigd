@@ -3,7 +3,6 @@
 package netlink
 
 import (
-	"reflect"
 	"testing"
 )
 
@@ -22,13 +21,6 @@ func SafeQdiscList(link Link) ([]Qdisc, error) {
 		}
 	}
 	return result, nil
-}
-
-func testClassStats(this, that *ClassStatistics, t *testing.T) {
-	ok := reflect.DeepEqual(this, that)
-	if !ok {
-		t.Fatalf("%#v is expected but it actually was %#v", that, this)
-	}
 }
 
 func TestClassAddDel(t *testing.T) {
@@ -106,8 +98,6 @@ func TestClassAddDel(t *testing.T) {
 	if htb.Cbuffer != class.Cbuffer {
 		t.Fatal("Cbuffer doesn't match")
 	}
-
-	testClassStats(htb.ClassAttrs.Statistics, NewClassStatistics(), t)
 
 	qattrs := QdiscAttrs{
 		LinkIndex: link.Attrs().Index,
@@ -259,8 +249,6 @@ func TestHtbClassAddHtbClassChangeDel(t *testing.T) {
 	if !ok {
 		t.Fatal("Class is the wrong type")
 	}
-
-	testClassStats(htb.ClassAttrs.Statistics, NewClassStatistics(), t)
 
 	qattrs := QdiscAttrs{
 		LinkIndex: link.Attrs().Index,

@@ -13,7 +13,7 @@ import (
 
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxql"
-	"go.uber.org/zap"
+	"github.com/uber-go/zap"
 )
 
 var (
@@ -68,7 +68,7 @@ func ErrMaxConcurrentQueriesLimitExceeded(n, limit int) error {
 	return fmt.Errorf("max-concurrent-queries limit exceeded(%d, %d)", n, limit)
 }
 
-// Authorizer determines if certain operations are authorized.
+// Authorizer reports whether certain operations are authorized.
 type Authorizer interface {
 	// AuthorizeDatabase indicates whether the given Privilege is authorized on the database with the given name.
 	AuthorizeDatabase(p influxql.Privilege, name string) bool
@@ -85,34 +85,22 @@ type Authorizer interface {
 
 // OpenAuthorizer is the Authorizer used when authorization is disabled.
 // It allows all operations.
-type openAuthorizer struct{}
+type OpenAuthorizer struct{}
 
-// OpenAuthorizer can be shared by all goroutines.
-var OpenAuthorizer = openAuthorizer{}
+var _ Authorizer = OpenAuthorizer{}
 
 // AuthorizeDatabase returns true to allow any operation on a database.
-func (a openAuthorizer) AuthorizeDatabase(influxql.Privilege, string) bool { return true }
+func (_ OpenAuthorizer) AuthorizeDatabase(influxql.Privilege, string) bool { return true }
 
-// AuthorizeSeriesRead allows accesss to any series.
-func (a openAuthorizer) AuthorizeSeriesRead(database string, measurement []byte, tags models.Tags) bool {
+func (_ OpenAuthorizer) AuthorizeSeriesRead(database string, measurement []byte, tags models.Tags) bool {
 	return true
 }
 
-// AuthorizeSeriesWrite allows accesss to any series.
-func (a openAuthorizer) AuthorizeSeriesWrite(database string, measurement []byte, tags models.Tags) bool {
+func (_ OpenAuthorizer) AuthorizeSeriesWrite(database string, measurement []byte, tags models.Tags) bool {
 	return true
 }
 
-// AuthorizeSeriesRead allows any query to execute.
-func (a openAuthorizer) AuthorizeQuery(_ string, _ *influxql.Query) error { return nil }
-
-// AuthorizerIsOpen returns true if the provided Authorizer is guaranteed to
-// authorize anything. A nil Authorizer returns true for this function, and this
-// function should be preferred over directly checking if an Authorizer is nil
-// or not.
-func AuthorizerIsOpen(a Authorizer) bool {
-	return a == nil || a == OpenAuthorizer
-}
+func (_ OpenAuthorizer) AuthorizeQuery(_ string, _ *influxql.Query) error { return nil }
 
 // ExecutionOptions contains the options for executing a query.
 type ExecutionOptions struct {
@@ -152,6 +140,9 @@ type ExecutionContext struct {
 
 	// Output channel where results and errors should be sent.
 	Results chan *Result
+
+	// Hold the query executor's logger.
+	Log zap.Logger
 
 	// A channel that is closed when the query is interrupted.
 	InterruptCh <-chan struct{}
@@ -228,7 +219,7 @@ type QueryExecutor struct {
 
 	// Logger to use for all logging.
 	// Defaults to discarding all log output.
-	Logger *zap.Logger
+	Logger zap.Logger
 
 	// expvar-based stats.
 	stats *QueryStatistics
@@ -238,7 +229,7 @@ type QueryExecutor struct {
 func NewQueryExecutor() *QueryExecutor {
 	return &QueryExecutor{
 		TaskManager: NewTaskManager(),
-		Logger:      zap.NewNop(),
+		Logger:      zap.New(zap.NullEncoder()),
 		stats:       &QueryStatistics{},
 	}
 }
@@ -274,7 +265,7 @@ func (e *QueryExecutor) Close() error {
 
 // SetLogOutput sets the writer to which all logs are written. It must not be
 // called after Open is called.
-func (e *QueryExecutor) WithLogger(log *zap.Logger) {
+func (e *QueryExecutor) WithLogger(log zap.Logger) {
 	e.Logger = log.With(zap.String("service", "query"))
 	e.TaskManager.Logger = e.Logger
 }
@@ -313,6 +304,7 @@ func (e *QueryExecutor) executeQuery(query *influxql.Query, opt ExecutionOptions
 		QueryID:          qid,
 		Query:            task,
 		Results:          results,
+		Log:              e.Logger,
 		InterruptCh:      task.closing,
 		ExecutionOptions: opt,
 	}
@@ -382,7 +374,7 @@ LOOP:
 
 		// Log each normalized statement.
 		if !ctx.Quiet {
-			e.Logger.Info("Executing query", zap.Stringer("query", stmt))
+			e.Logger.Info(stmt.String())
 		}
 
 		// Send any other statements to the underlying statement executor.
@@ -516,8 +508,6 @@ func (q *QueryTask) monitor(fn QueryMonitorFunc) {
 func (q *QueryTask) close() {
 	q.mu.Lock()
 	if q.status != KilledTask {
-		// Set the status to killed to prevent closing the channel twice.
-		q.status = KilledTask
 		close(q.closing)
 	}
 	q.mu.Unlock()

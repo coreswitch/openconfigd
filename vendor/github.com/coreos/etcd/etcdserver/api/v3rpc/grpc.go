@@ -16,10 +16,7 @@ package v3rpc
 
 import (
 	"crypto/tls"
-	"io/ioutil"
 	"math"
-	"os"
-	"sync"
 
 	"github.com/coreos/etcd/etcdserver"
 	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
@@ -34,8 +31,9 @@ const (
 	maxSendBytes      = math.MaxInt32
 )
 
-// integration tests call this multiple times, which is racey in gRPC side
-var grpclogOnce sync.Once
+func init() {
+	grpclog.SetLogger(plog)
+}
 
 func Server(s *etcdserver.EtcdServer, tls *tls.Config, gopts ...grpc.ServerOption) *grpc.Server {
 	var opts []grpc.ServerOption
@@ -57,15 +55,5 @@ func Server(s *etcdserver.EtcdServer, tls *tls.Config, gopts ...grpc.ServerOptio
 	pb.RegisterAuthServer(grpcServer, NewAuthServer(s))
 	pb.RegisterMaintenanceServer(grpcServer, NewMaintenanceServer(s))
 
-	grpclogOnce.Do(func() {
-		if s.Cfg.Debug {
-			grpc.EnableTracing = true
-			// enable info, warning, error
-			grpclog.SetLoggerV2(grpclog.NewLoggerV2(os.Stderr, os.Stderr, os.Stderr))
-		} else {
-			// only discard info
-			grpclog.SetLoggerV2(grpclog.NewLoggerV2(ioutil.Discard, os.Stderr, os.Stderr))
-		}
-	})
 	return grpcServer
 }

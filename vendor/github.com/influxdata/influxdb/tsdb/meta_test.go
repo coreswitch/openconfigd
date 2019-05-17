@@ -7,6 +7,7 @@ import (
 
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/tsdb"
+	"github.com/influxdata/influxdb/tsdb/index/inmem"
 )
 
 // Ensure tags can be marshaled into a byte slice.
@@ -141,20 +142,18 @@ func benchmarkMakeTagsKey(b *testing.B, keyN int) {
 
 type TestSeries struct {
 	Measurement string
-	Key         string
-	Tags        models.Tags
+	Series      *inmem.Series
 }
 
 func genTestSeries(mCnt, tCnt, vCnt int) []*TestSeries {
 	measurements := genStrList("measurement", mCnt)
 	tagSets := NewTagSetGenerator(tCnt, vCnt).AllSets()
-	series := make([]*TestSeries, 0, mCnt*len(tagSets))
+	series := []*TestSeries{}
 	for _, m := range measurements {
 		for _, ts := range tagSets {
 			series = append(series, &TestSeries{
 				Measurement: m,
-				Key:         fmt.Sprintf("%s:%s", m, string(tsdb.MarshalTags(ts))),
-				Tags:        models.NewTags(ts),
+				Series:      inmem.NewSeries([]byte(fmt.Sprintf("%s:%s", m, string(tsdb.MarshalTags(ts)))), models.NewTags(ts)),
 			})
 		}
 	}

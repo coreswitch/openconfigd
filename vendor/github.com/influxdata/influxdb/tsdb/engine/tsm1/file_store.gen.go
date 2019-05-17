@@ -8,7 +8,6 @@ package tsm1
 
 // ReadFloatBlock reads the next block as a set of float values.
 func (c *KeyCursor) ReadFloatBlock(buf *[]FloatValue) ([]FloatValue, error) {
-LOOP:
 	// No matching blocks to decode
 	if len(c.current) == 0 {
 		return nil, nil
@@ -33,11 +32,9 @@ LOOP:
 	tombstones := first.r.TombstoneRange(c.key)
 	values = c.filterFloatValues(tombstones, values)
 
-	// If there are no values in this first block (all tombonstoned or previously read) and
-	// we have more potential blocks too search.  Try again.
-	if len(values) == 0 && len(c.current) > 0 {
-		c.current = c.current[1:]
-		goto LOOP
+	// Check we have remaining values.
+	if len(values) == 0 {
+		return nil, nil
 	}
 
 	// Only one block with this key and time range so return it
@@ -188,7 +185,6 @@ LOOP:
 
 // ReadIntegerBlock reads the next block as a set of integer values.
 func (c *KeyCursor) ReadIntegerBlock(buf *[]IntegerValue) ([]IntegerValue, error) {
-LOOP:
 	// No matching blocks to decode
 	if len(c.current) == 0 {
 		return nil, nil
@@ -213,11 +209,9 @@ LOOP:
 	tombstones := first.r.TombstoneRange(c.key)
 	values = c.filterIntegerValues(tombstones, values)
 
-	// If there are no values in this first block (all tombonstoned or previously read) and
-	// we have more potential blocks too search.  Try again.
-	if len(values) == 0 && len(c.current) > 0 {
-		c.current = c.current[1:]
-		goto LOOP
+	// Check we have remaining values.
+	if len(values) == 0 {
+		return nil, nil
 	}
 
 	// Only one block with this key and time range so return it
@@ -368,7 +362,6 @@ LOOP:
 
 // ReadUnsignedBlock reads the next block as a set of unsigned values.
 func (c *KeyCursor) ReadUnsignedBlock(buf *[]UnsignedValue) ([]UnsignedValue, error) {
-LOOP:
 	// No matching blocks to decode
 	if len(c.current) == 0 {
 		return nil, nil
@@ -393,11 +386,9 @@ LOOP:
 	tombstones := first.r.TombstoneRange(c.key)
 	values = c.filterUnsignedValues(tombstones, values)
 
-	// If there are no values in this first block (all tombonstoned or previously read) and
-	// we have more potential blocks too search.  Try again.
-	if len(values) == 0 && len(c.current) > 0 {
-		c.current = c.current[1:]
-		goto LOOP
+	// Check we have remaining values.
+	if len(values) == 0 {
+		return nil, nil
 	}
 
 	// Only one block with this key and time range so return it
@@ -548,7 +539,6 @@ LOOP:
 
 // ReadStringBlock reads the next block as a set of string values.
 func (c *KeyCursor) ReadStringBlock(buf *[]StringValue) ([]StringValue, error) {
-LOOP:
 	// No matching blocks to decode
 	if len(c.current) == 0 {
 		return nil, nil
@@ -573,11 +563,9 @@ LOOP:
 	tombstones := first.r.TombstoneRange(c.key)
 	values = c.filterStringValues(tombstones, values)
 
-	// If there are no values in this first block (all tombonstoned or previously read) and
-	// we have more potential blocks too search.  Try again.
-	if len(values) == 0 && len(c.current) > 0 {
-		c.current = c.current[1:]
-		goto LOOP
+	// Check we have remaining values.
+	if len(values) == 0 {
+		return nil, nil
 	}
 
 	// Only one block with this key and time range so return it
@@ -728,7 +716,6 @@ LOOP:
 
 // ReadBooleanBlock reads the next block as a set of boolean values.
 func (c *KeyCursor) ReadBooleanBlock(buf *[]BooleanValue) ([]BooleanValue, error) {
-LOOP:
 	// No matching blocks to decode
 	if len(c.current) == 0 {
 		return nil, nil
@@ -753,11 +740,9 @@ LOOP:
 	tombstones := first.r.TombstoneRange(c.key)
 	values = c.filterBooleanValues(tombstones, values)
 
-	// If there are no values in this first block (all tombonstoned or previously read) and
-	// we have more potential blocks too search.  Try again.
-	if len(values) == 0 && len(c.current) > 0 {
-		c.current = c.current[1:]
-		goto LOOP
+	// Check we have remaining values.
+	if len(values) == 0 {
+		return nil, nil
 	}
 
 	// Only one block with this key and time range so return it

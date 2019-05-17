@@ -112,9 +112,6 @@ type floatMergeIterator struct {
 	heap   *floatMergeHeap
 	init   bool
 
-	closed bool
-	mu     sync.RWMutex
-
 	// Current iterator and window.
 	curr   *floatMergeHeapItem
 	window struct {
@@ -143,7 +140,6 @@ func newFloatMergeIterator(inputs []FloatIterator, opt IteratorOptions) *floatMe
 		// Append to the heap.
 		itr.heap.items = append(itr.heap.items, &floatMergeHeapItem{itr: bufInput})
 	}
-
 	return itr
 }
 
@@ -158,27 +154,17 @@ func (itr *floatMergeIterator) Stats() IteratorStats {
 
 // Close closes the underlying iterators.
 func (itr *floatMergeIterator) Close() error {
-	itr.mu.Lock()
-	defer itr.mu.Unlock()
-
 	for _, input := range itr.inputs {
 		input.Close()
 	}
 	itr.curr = nil
 	itr.inputs = nil
 	itr.heap.items = nil
-	itr.closed = true
 	return nil
 }
 
 // Next returns the next point from the iterator.
 func (itr *floatMergeIterator) Next() (*FloatPoint, error) {
-	itr.mu.RLock()
-	defer itr.mu.RUnlock()
-	if itr.closed {
-		return nil, nil
-	}
-
 	// Initialize the heap. This needs to be done lazily on the first call to this iterator
 	// so that iterator initialization done through the Select() call returns quickly.
 	// Queries can only be interrupted after the Select() call completes so any operations
@@ -690,17 +676,21 @@ func (itr *floatFillIterator) Next() (*FloatPoint, error) {
 	}
 
 	// Check if the next point is outside of our window or is nil.
-	if p == nil || p.Name != itr.window.name || p.Tags.ID() != itr.window.tags.ID() {
+	for p == nil || p.Name != itr.window.name || p.Tags.ID() != itr.window.tags.ID() {
 		// If we are inside of an interval, unread the point and continue below to
 		// constructing a new point.
-		if itr.opt.Ascending && itr.window.time <= itr.endTime {
-			itr.input.unread(p)
-			p = nil
-			goto CONSTRUCT
-		} else if !itr.opt.Ascending && itr.window.time >= itr.endTime && itr.endTime != influxql.MinTime {
-			itr.input.unread(p)
-			p = nil
-			goto CONSTRUCT
+		if itr.opt.Ascending {
+			if itr.window.time <= itr.endTime {
+				itr.input.unread(p)
+				p = nil
+				break
+			}
+		} else {
+			if itr.window.time >= itr.endTime && itr.endTime != influxql.MinTime {
+				itr.input.unread(p)
+				p = nil
+				break
+			}
 		}
 
 		// We are *not* in a current interval. If there is no next point,
@@ -719,10 +709,10 @@ func (itr *floatFillIterator) Next() (*FloatPoint, error) {
 			_, itr.window.offset = itr.opt.Zone(itr.window.time)
 		}
 		itr.prev = FloatPoint{Nil: true}
+		break
 	}
 
 	// Check if the point is our next expected point.
-CONSTRUCT:
 	if p == nil || (itr.opt.Ascending && p.Time > itr.window.time) || (!itr.opt.Ascending && p.Time < itr.window.time) {
 		if p != nil {
 			itr.input.unread(p)
@@ -3524,9 +3514,6 @@ type integerMergeIterator struct {
 	heap   *integerMergeHeap
 	init   bool
 
-	closed bool
-	mu     sync.RWMutex
-
 	// Current iterator and window.
 	curr   *integerMergeHeapItem
 	window struct {
@@ -3570,27 +3557,17 @@ func (itr *integerMergeIterator) Stats() IteratorStats {
 
 // Close closes the underlying iterators.
 func (itr *integerMergeIterator) Close() error {
-	itr.mu.Lock()
-	defer itr.mu.Unlock()
-
 	for _, input := range itr.inputs {
 		input.Close()
 	}
 	itr.curr = nil
 	itr.inputs = nil
 	itr.heap.items = nil
-	itr.closed = true
 	return nil
 }
 
 // Next returns the next point from the iterator.
 func (itr *integerMergeIterator) Next() (*IntegerPoint, error) {
-	itr.mu.RLock()
-	defer itr.mu.RUnlock()
-	if itr.closed {
-		return nil, nil
-	}
-
 	// Initialize the heap. This needs to be done lazily on the first call to this iterator
 	// so that iterator initialization done through the Select() call returns quickly.
 	// Queries can only be interrupted after the Select() call completes so any operations
@@ -4102,17 +4079,21 @@ func (itr *integerFillIterator) Next() (*IntegerPoint, error) {
 	}
 
 	// Check if the next point is outside of our window or is nil.
-	if p == nil || p.Name != itr.window.name || p.Tags.ID() != itr.window.tags.ID() {
+	for p == nil || p.Name != itr.window.name || p.Tags.ID() != itr.window.tags.ID() {
 		// If we are inside of an interval, unread the point and continue below to
 		// constructing a new point.
-		if itr.opt.Ascending && itr.window.time <= itr.endTime {
-			itr.input.unread(p)
-			p = nil
-			goto CONSTRUCT
-		} else if !itr.opt.Ascending && itr.window.time >= itr.endTime && itr.endTime != influxql.MinTime {
-			itr.input.unread(p)
-			p = nil
-			goto CONSTRUCT
+		if itr.opt.Ascending {
+			if itr.window.time <= itr.endTime {
+				itr.input.unread(p)
+				p = nil
+				break
+			}
+		} else {
+			if itr.window.time >= itr.endTime && itr.endTime != influxql.MinTime {
+				itr.input.unread(p)
+				p = nil
+				break
+			}
 		}
 
 		// We are *not* in a current interval. If there is no next point,
@@ -4131,10 +4112,10 @@ func (itr *integerFillIterator) Next() (*IntegerPoint, error) {
 			_, itr.window.offset = itr.opt.Zone(itr.window.time)
 		}
 		itr.prev = IntegerPoint{Nil: true}
+		break
 	}
 
 	// Check if the point is our next expected point.
-CONSTRUCT:
 	if p == nil || (itr.opt.Ascending && p.Time > itr.window.time) || (!itr.opt.Ascending && p.Time < itr.window.time) {
 		if p != nil {
 			itr.input.unread(p)
@@ -6933,9 +6914,6 @@ type unsignedMergeIterator struct {
 	heap   *unsignedMergeHeap
 	init   bool
 
-	closed bool
-	mu     sync.RWMutex
-
 	// Current iterator and window.
 	curr   *unsignedMergeHeapItem
 	window struct {
@@ -6979,27 +6957,17 @@ func (itr *unsignedMergeIterator) Stats() IteratorStats {
 
 // Close closes the underlying iterators.
 func (itr *unsignedMergeIterator) Close() error {
-	itr.mu.Lock()
-	defer itr.mu.Unlock()
-
 	for _, input := range itr.inputs {
 		input.Close()
 	}
 	itr.curr = nil
 	itr.inputs = nil
 	itr.heap.items = nil
-	itr.closed = true
 	return nil
 }
 
 // Next returns the next point from the iterator.
 func (itr *unsignedMergeIterator) Next() (*UnsignedPoint, error) {
-	itr.mu.RLock()
-	defer itr.mu.RUnlock()
-	if itr.closed {
-		return nil, nil
-	}
-
 	// Initialize the heap. This needs to be done lazily on the first call to this iterator
 	// so that iterator initialization done through the Select() call returns quickly.
 	// Queries can only be interrupted after the Select() call completes so any operations
@@ -7511,17 +7479,21 @@ func (itr *unsignedFillIterator) Next() (*UnsignedPoint, error) {
 	}
 
 	// Check if the next point is outside of our window or is nil.
-	if p == nil || p.Name != itr.window.name || p.Tags.ID() != itr.window.tags.ID() {
+	for p == nil || p.Name != itr.window.name || p.Tags.ID() != itr.window.tags.ID() {
 		// If we are inside of an interval, unread the point and continue below to
 		// constructing a new point.
-		if itr.opt.Ascending && itr.window.time <= itr.endTime {
-			itr.input.unread(p)
-			p = nil
-			goto CONSTRUCT
-		} else if !itr.opt.Ascending && itr.window.time >= itr.endTime && itr.endTime != influxql.MinTime {
-			itr.input.unread(p)
-			p = nil
-			goto CONSTRUCT
+		if itr.opt.Ascending {
+			if itr.window.time <= itr.endTime {
+				itr.input.unread(p)
+				p = nil
+				break
+			}
+		} else {
+			if itr.window.time >= itr.endTime && itr.endTime != influxql.MinTime {
+				itr.input.unread(p)
+				p = nil
+				break
+			}
 		}
 
 		// We are *not* in a current interval. If there is no next point,
@@ -7540,10 +7512,10 @@ func (itr *unsignedFillIterator) Next() (*UnsignedPoint, error) {
 			_, itr.window.offset = itr.opt.Zone(itr.window.time)
 		}
 		itr.prev = UnsignedPoint{Nil: true}
+		break
 	}
 
 	// Check if the point is our next expected point.
-CONSTRUCT:
 	if p == nil || (itr.opt.Ascending && p.Time > itr.window.time) || (!itr.opt.Ascending && p.Time < itr.window.time) {
 		if p != nil {
 			itr.input.unread(p)
@@ -10342,9 +10314,6 @@ type stringMergeIterator struct {
 	heap   *stringMergeHeap
 	init   bool
 
-	closed bool
-	mu     sync.RWMutex
-
 	// Current iterator and window.
 	curr   *stringMergeHeapItem
 	window struct {
@@ -10388,27 +10357,17 @@ func (itr *stringMergeIterator) Stats() IteratorStats {
 
 // Close closes the underlying iterators.
 func (itr *stringMergeIterator) Close() error {
-	itr.mu.Lock()
-	defer itr.mu.Unlock()
-
 	for _, input := range itr.inputs {
 		input.Close()
 	}
 	itr.curr = nil
 	itr.inputs = nil
 	itr.heap.items = nil
-	itr.closed = true
 	return nil
 }
 
 // Next returns the next point from the iterator.
 func (itr *stringMergeIterator) Next() (*StringPoint, error) {
-	itr.mu.RLock()
-	defer itr.mu.RUnlock()
-	if itr.closed {
-		return nil, nil
-	}
-
 	// Initialize the heap. This needs to be done lazily on the first call to this iterator
 	// so that iterator initialization done through the Select() call returns quickly.
 	// Queries can only be interrupted after the Select() call completes so any operations
@@ -10920,17 +10879,21 @@ func (itr *stringFillIterator) Next() (*StringPoint, error) {
 	}
 
 	// Check if the next point is outside of our window or is nil.
-	if p == nil || p.Name != itr.window.name || p.Tags.ID() != itr.window.tags.ID() {
+	for p == nil || p.Name != itr.window.name || p.Tags.ID() != itr.window.tags.ID() {
 		// If we are inside of an interval, unread the point and continue below to
 		// constructing a new point.
-		if itr.opt.Ascending && itr.window.time <= itr.endTime {
-			itr.input.unread(p)
-			p = nil
-			goto CONSTRUCT
-		} else if !itr.opt.Ascending && itr.window.time >= itr.endTime && itr.endTime != influxql.MinTime {
-			itr.input.unread(p)
-			p = nil
-			goto CONSTRUCT
+		if itr.opt.Ascending {
+			if itr.window.time <= itr.endTime {
+				itr.input.unread(p)
+				p = nil
+				break
+			}
+		} else {
+			if itr.window.time >= itr.endTime && itr.endTime != influxql.MinTime {
+				itr.input.unread(p)
+				p = nil
+				break
+			}
 		}
 
 		// We are *not* in a current interval. If there is no next point,
@@ -10949,10 +10912,10 @@ func (itr *stringFillIterator) Next() (*StringPoint, error) {
 			_, itr.window.offset = itr.opt.Zone(itr.window.time)
 		}
 		itr.prev = StringPoint{Nil: true}
+		break
 	}
 
 	// Check if the point is our next expected point.
-CONSTRUCT:
 	if p == nil || (itr.opt.Ascending && p.Time > itr.window.time) || (!itr.opt.Ascending && p.Time < itr.window.time) {
 		if p != nil {
 			itr.input.unread(p)
@@ -13737,9 +13700,6 @@ type booleanMergeIterator struct {
 	heap   *booleanMergeHeap
 	init   bool
 
-	closed bool
-	mu     sync.RWMutex
-
 	// Current iterator and window.
 	curr   *booleanMergeHeapItem
 	window struct {
@@ -13783,27 +13743,17 @@ func (itr *booleanMergeIterator) Stats() IteratorStats {
 
 // Close closes the underlying iterators.
 func (itr *booleanMergeIterator) Close() error {
-	itr.mu.Lock()
-	defer itr.mu.Unlock()
-
 	for _, input := range itr.inputs {
 		input.Close()
 	}
 	itr.curr = nil
 	itr.inputs = nil
 	itr.heap.items = nil
-	itr.closed = true
 	return nil
 }
 
 // Next returns the next point from the iterator.
 func (itr *booleanMergeIterator) Next() (*BooleanPoint, error) {
-	itr.mu.RLock()
-	defer itr.mu.RUnlock()
-	if itr.closed {
-		return nil, nil
-	}
-
 	// Initialize the heap. This needs to be done lazily on the first call to this iterator
 	// so that iterator initialization done through the Select() call returns quickly.
 	// Queries can only be interrupted after the Select() call completes so any operations
@@ -14315,17 +14265,21 @@ func (itr *booleanFillIterator) Next() (*BooleanPoint, error) {
 	}
 
 	// Check if the next point is outside of our window or is nil.
-	if p == nil || p.Name != itr.window.name || p.Tags.ID() != itr.window.tags.ID() {
+	for p == nil || p.Name != itr.window.name || p.Tags.ID() != itr.window.tags.ID() {
 		// If we are inside of an interval, unread the point and continue below to
 		// constructing a new point.
-		if itr.opt.Ascending && itr.window.time <= itr.endTime {
-			itr.input.unread(p)
-			p = nil
-			goto CONSTRUCT
-		} else if !itr.opt.Ascending && itr.window.time >= itr.endTime && itr.endTime != influxql.MinTime {
-			itr.input.unread(p)
-			p = nil
-			goto CONSTRUCT
+		if itr.opt.Ascending {
+			if itr.window.time <= itr.endTime {
+				itr.input.unread(p)
+				p = nil
+				break
+			}
+		} else {
+			if itr.window.time >= itr.endTime && itr.endTime != influxql.MinTime {
+				itr.input.unread(p)
+				p = nil
+				break
+			}
 		}
 
 		// We are *not* in a current interval. If there is no next point,
@@ -14344,10 +14298,10 @@ func (itr *booleanFillIterator) Next() (*BooleanPoint, error) {
 			_, itr.window.offset = itr.opt.Zone(itr.window.time)
 		}
 		itr.prev = BooleanPoint{Nil: true}
+		break
 	}
 
 	// Check if the point is our next expected point.
-CONSTRUCT:
 	if p == nil || (itr.opt.Ascending && p.Time > itr.window.time) || (!itr.opt.Ascending && p.Time < itr.window.time) {
 		if p != nil {
 			itr.input.unread(p)

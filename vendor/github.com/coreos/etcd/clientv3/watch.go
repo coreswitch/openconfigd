@@ -106,8 +106,7 @@ func (wr *WatchResponse) IsProgressNotify() bool {
 
 // watcher implements the Watcher interface
 type watcher struct {
-	remote   pb.WatchClient
-	callOpts []grpc.CallOption
+	remote pb.WatchClient
 
 	// mu protects the grpc streams map
 	mu sync.RWMutex
@@ -118,9 +117,8 @@ type watcher struct {
 
 // watchGrpcStream tracks all watch resources attached to a single grpc stream.
 type watchGrpcStream struct {
-	owner    *watcher
-	remote   pb.WatchClient
-	callOpts []grpc.CallOption
+	owner  *watcher
+	remote pb.WatchClient
 
 	// ctx controls internal remote.Watch requests
 	ctx context.Context
@@ -191,18 +189,14 @@ type watcherStream struct {
 }
 
 func NewWatcher(c *Client) Watcher {
-	return NewWatchFromWatchClient(pb.NewWatchClient(c.conn), c)
+	return NewWatchFromWatchClient(pb.NewWatchClient(c.conn))
 }
 
-func NewWatchFromWatchClient(wc pb.WatchClient, c *Client) Watcher {
-	w := &watcher{
+func NewWatchFromWatchClient(wc pb.WatchClient) Watcher {
+	return &watcher{
 		remote:  wc,
 		streams: make(map[string]*watchGrpcStream),
 	}
-	if c != nil {
-		w.callOpts = c.callOpts
-	}
-	return w
 }
 
 // never closes
@@ -221,7 +215,6 @@ func (w *watcher) newWatcherGrpcStream(inctx context.Context) *watchGrpcStream {
 	wgs := &watchGrpcStream{
 		owner:      w,
 		remote:     w.remote,
-		callOpts:   w.callOpts,
 		ctx:        ctx,
 		ctxKey:     streamKeyFromCtx(inctx),
 		cancel:     cancel,
@@ -782,7 +775,7 @@ func (w *watchGrpcStream) openWatchClient() (ws pb.Watch_WatchClient, err error)
 			return nil, err
 		default:
 		}
-		if ws, err = w.remote.Watch(w.ctx, w.callOpts...); ws != nil && err == nil {
+		if ws, err = w.remote.Watch(w.ctx, grpc.FailFast(false)); ws != nil && err == nil {
 			break
 		}
 		if isHaltErr(w.ctx, err) {

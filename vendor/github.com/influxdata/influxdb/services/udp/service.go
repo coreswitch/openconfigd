@@ -3,16 +3,16 @@ package udp // import "github.com/influxdata/influxdb/services/udp"
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/influxdata/influxdb/logger"
 	"github.com/influxdata/influxdb/models"
 	"github.com/influxdata/influxdb/services/meta"
 	"github.com/influxdata/influxdb/tsdb"
-	"go.uber.org/zap"
+	"github.com/uber-go/zap"
 )
 
 const (
@@ -56,7 +56,7 @@ type Service struct {
 		CreateDatabase(name string) (*meta.DatabaseInfo, error)
 	}
 
-	Logger      *zap.Logger
+	Logger      zap.Logger
 	stats       *Statistics
 	defaultTags models.StatisticTags
 }
@@ -67,7 +67,7 @@ func NewService(c Config) *Service {
 	return &Service{
 		config:      d,
 		parserChan:  make(chan []byte, parserChanLen),
-		Logger:      zap.NewNop(),
+		Logger:      zap.New(zap.NullEncoder()),
 		stats:       &Statistics{},
 		defaultTags: models.StatisticTags{"bind": d.BindAddress},
 	}
@@ -92,30 +92,28 @@ func (s *Service) Open() (err error) {
 
 	s.addr, err = net.ResolveUDPAddr("udp", s.config.BindAddress)
 	if err != nil {
-		s.Logger.Info("Failed to resolve UDP address",
-			zap.String("bind_address", s.config.BindAddress), zap.Error(err))
+		s.Logger.Info(fmt.Sprintf("Failed to resolve UDP address %s: %s", s.config.BindAddress, err))
 		return err
 	}
 
 	s.conn, err = net.ListenUDP("udp", s.addr)
 	if err != nil {
-		s.Logger.Info("Failed to set up UDP listener",
-			zap.Stringer("addr", s.addr), zap.Error(err))
+		s.Logger.Info(fmt.Sprintf("Failed to set up UDP listener at address %s: %s", s.addr, err))
 		return err
 	}
 
 	if s.config.ReadBuffer != 0 {
 		err = s.conn.SetReadBuffer(s.config.ReadBuffer)
 		if err != nil {
-			s.Logger.Info("Failed to set UDP read buffer",
-				zap.Int("buffer_size", s.config.ReadBuffer), zap.Error(err))
+			s.Logger.Info(fmt.Sprintf("Failed to set UDP read buffer to %d: %s",
+				s.config.ReadBuffer, err))
 			return err
 		}
 	}
 	s.batcher = tsdb.NewPointBatcher(s.config.BatchSize, s.config.BatchPending, time.Duration(s.config.BatchTimeout))
 	s.batcher.Start()
 
-	s.Logger.Info("Started listening on UDP", zap.String("addr", s.config.BindAddress))
+	s.Logger.Info(fmt.Sprintf("Started listening on UDP: %s", s.config.BindAddress))
 
 	s.wg.Add(3)
 	go s.serve()
@@ -161,8 +159,7 @@ func (s *Service) writer() {
 		case batch := <-s.batcher.Out():
 			// Will attempt to create database if not yet created.
 			if err := s.createInternalStorage(); err != nil {
-				s.Logger.Info("Required database does not yet exist",
-					logger.Database(s.config.Database), zap.Error(err))
+				s.Logger.Info(fmt.Sprintf("Required database %s does not yet exist: %s", s.config.Database, err.Error()))
 				continue
 			}
 
@@ -170,8 +167,7 @@ func (s *Service) writer() {
 				atomic.AddInt64(&s.stats.BatchesTransmitted, 1)
 				atomic.AddInt64(&s.stats.PointsTransmitted, int64(len(batch)))
 			} else {
-				s.Logger.Info("Failed to write point batch to database",
-					logger.Database(s.config.Database), zap.Error(err))
+				s.Logger.Info(fmt.Sprintf("failed to write point batch to database %q: %s", s.config.Database, err))
 				atomic.AddInt64(&s.stats.BatchesTransmitFail, 1)
 			}
 
@@ -195,7 +191,7 @@ func (s *Service) serve() {
 			n, _, err := s.conn.ReadFromUDP(buf)
 			if err != nil {
 				atomic.AddInt64(&s.stats.ReadFail, 1)
-				s.Logger.Info("Failed to read UDP message", zap.Error(err))
+				s.Logger.Info(fmt.Sprintf("Failed to read UDP message: %s", err))
 				continue
 			}
 			atomic.AddInt64(&s.stats.BytesReceived, int64(n))
@@ -218,7 +214,7 @@ func (s *Service) parser() {
 			points, err := models.ParsePointsWithPrecision(buf, time.Now().UTC(), s.config.Precision)
 			if err != nil {
 				atomic.AddInt64(&s.stats.PointsParseFail, 1)
-				s.Logger.Info("Failed to parse points", zap.Error(err))
+				s.Logger.Info(fmt.Sprintf("Failed to parse points: %s", err))
 				continue
 			}
 
@@ -304,7 +300,7 @@ func (s *Service) createInternalStorage() error {
 }
 
 // WithLogger sets the logger on the service.
-func (s *Service) WithLogger(log *zap.Logger) {
+func (s *Service) WithLogger(log zap.Logger) {
 	s.Logger = log.With(zap.String("service", "udp"))
 }
 

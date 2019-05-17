@@ -1502,41 +1502,6 @@ func TestIteratorOptions_MarshalBinary(t *testing.T) {
 	}
 }
 
-func TestIteratorOptions_MarshalBinary_ImproperCondition(t *testing.T) {
-	// This expression will get mangled by ConditionExpr so we need to make
-	// sure it gets fixed and is not lost in encoding.
-	s := `(host = 'server01' OR host = 'server02') AND region = 'uswest'`
-	cond := MustParseExpr(s)
-	cond, _, err := influxql.ConditionExpr(cond, nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-
-	if cond.String() == s {
-		t.Skip("condition expr bug not present")
-	}
-
-	opt := query.IteratorOptions{
-		Condition: cond,
-	}
-
-	buf, err := opt.MarshalBinary()
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-
-	// Unmarshal the buffer into a new IteratorOptions.
-	var target query.IteratorOptions
-	if err := target.UnmarshalBinary(buf); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-
-	// Ensure that the condition string is correct.
-	if got, want := target.Condition.String(), s; got != want {
-		t.Fatalf("unexpected condition expression: got=%v want=%v", got, want)
-	}
-}
-
 // Ensure iterator can be encoded and decoded over a byte stream.
 func TestIterator_EncodeDecode(t *testing.T) {
 	var buf bytes.Buffer
@@ -1585,6 +1550,35 @@ func TestIterator_EncodeDecode(t *testing.T) {
 	} else if p != nil {
 		t.Fatalf("unexpected point(eof); %#v", p)
 	}
+}
+
+// IteratorCreator is a mockable implementation of SelectStatementExecutor.IteratorCreator.
+type IteratorCreator struct {
+	CreateIteratorFn  func(ctx context.Context, m *influxql.Measurement, opt query.IteratorOptions) (query.Iterator, error)
+	FieldDimensionsFn func(m *influxql.Measurement) (fields map[string]influxql.DataType, dimensions map[string]struct{}, err error)
+}
+
+func (ic *IteratorCreator) CreateIterator(ctx context.Context, m *influxql.Measurement, opt query.IteratorOptions) (query.Iterator, error) {
+	return ic.CreateIteratorFn(ctx, m, opt)
+}
+
+func (ic *IteratorCreator) FieldDimensions(m *influxql.Measurement) (fields map[string]influxql.DataType, dimensions map[string]struct{}, err error) {
+	return ic.FieldDimensionsFn(m)
+}
+
+func (ic *IteratorCreator) MapType(m *influxql.Measurement, field string) influxql.DataType {
+	f, d, err := ic.FieldDimensions(m)
+	if err != nil {
+		return influxql.Unknown
+	}
+
+	if typ, ok := f[field]; ok {
+		return typ
+	}
+	if _, ok := d[field]; ok {
+		return influxql.Tag
+	}
+	return influxql.Unknown
 }
 
 // Test implementation of influxql.FloatIterator

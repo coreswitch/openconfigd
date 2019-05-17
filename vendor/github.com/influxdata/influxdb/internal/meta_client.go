@@ -32,8 +32,7 @@ type MetaClientMock struct {
 
 	OpenFn func() error
 
-	PrecreateShardGroupsFn func(from, to time.Time) error
-	PruneShardGroupsFn     func() error
+	PruneShardGroupsFn func() error
 
 	RetentionPolicyFn func(database, name string) (rpi *meta.RetentionPolicyInfo, err error)
 
@@ -44,7 +43,6 @@ type MetaClientMock struct {
 	SetPrivilegeFn           func(username, database string, p influxql.Privilege) error
 	ShardGroupsByTimeRangeFn func(database, policy string, min, max time.Time) (a []meta.ShardGroupInfo, err error)
 	ShardOwnerFn             func(shardID uint64) (database, policy string, sgi *meta.ShardGroupInfo)
-	TruncateShardGroupsFn    func(t time.Time) error
 	UpdateRetentionPolicyFn  func(database, name string, rpu *meta.RetentionPolicyUpdate, makeDefault bool) error
 	UpdateUserFn             func(name, password string) error
 	UserPrivilegeFn          func(username, database string) (*influxql.Privilege, error)
@@ -141,10 +139,6 @@ func (c *MetaClientMock) ShardOwner(shardID uint64) (database, policy string, sg
 	return c.ShardOwnerFn(shardID)
 }
 
-func (c *MetaClientMock) TruncateShardGroups(t time.Time) error {
-	return c.TruncateShardGroupsFn(t)
-}
-
 func (c *MetaClientMock) UpdateRetentionPolicy(database, name string, rpu *meta.RetentionPolicyUpdate, makeDefault bool) error {
 	return c.UpdateRetentionPolicyFn(database, name, rpu, makeDefault)
 }
@@ -173,7 +167,4 @@ func (c *MetaClientMock) Open() error                { return c.OpenFn() }
 func (c *MetaClientMock) Data() meta.Data            { return c.DataFn() }
 func (c *MetaClientMock) SetData(d *meta.Data) error { return c.SetDataFn(d) }
 
-func (c *MetaClientMock) PrecreateShardGroups(from, to time.Time) error {
-	return c.PrecreateShardGroupsFn(from, to)
-}
 func (c *MetaClientMock) PruneShardGroups() error { return c.PruneShardGroupsFn() }

@@ -375,14 +375,6 @@ func TestParseAndMarshal(t *testing.T) {
               "Name": "bar",
               "Kind": 0,
               "Config": 0,
-              "Prefix": {
-                "Name": "t",
-                "Source": {
-                  "Keyword": "prefix",
-                  "HasArgument": true,
-                  "Argument": "t"
-                }
-              },
               "Type": {
                 "Name": "foobar",
                 "Kind": 18,
@@ -406,14 +398,6 @@ func TestParseAndMarshal(t *testing.T) {
               "Name": "k",
               "Kind": 0,
               "Config": 0,
-              "Prefix": {
-                "Name": "t",
-                "Source": {
-                  "Keyword": "prefix",
-                  "HasArgument": true,
-                  "Argument": "t"
-                }
-              },
               "Type": {
                 "Name": "string",
                 "Kind": 18
@@ -431,14 +415,6 @@ func TestParseAndMarshal(t *testing.T) {
           "Name": "d",
           "Kind": 0,
           "Config": 0,
-          "Prefix": {
-            "Name": "t",
-            "Source": {
-              "Keyword": "prefix",
-              "HasArgument": true,
-              "Argument": "t"
-            }
-          },
           "Type": {
             "Name": "decimal64",
             "Kind": 12,
@@ -463,14 +439,6 @@ func TestParseAndMarshal(t *testing.T) {
           "Name": "x",
           "Kind": 0,
           "Config": 0,
-          "Prefix": {
-            "Name": "t",
-            "Source": {
-              "Keyword": "prefix",
-              "HasArgument": true,
-              "Argument": "t"
-            }
-          },
           "Type": {
             "Name": "union",
             "Kind": 19,
@@ -498,14 +466,6 @@ func TestParseAndMarshal(t *testing.T) {
           "Name": "zip",
           "Kind": 0,
           "Config": 0,
-          "Prefix": {
-            "Name": "t",
-            "Source": {
-              "Keyword": "prefix",
-              "HasArgument": true,
-              "Argument": "t"
-            }
-          },
           "Type": {
             "Name": "string",
             "Kind": 18
@@ -578,14 +538,6 @@ func TestParseAndMarshal(t *testing.T) {
       "Name": "t",
       "Kind": 0,
       "Config": 0,
-      "Prefix": {
-        "Name": "t",
-        "Source": {
-          "Keyword": "prefix",
-          "HasArgument": true,
-          "Argument": "t"
-        }
-      },
       "Type": {
         "Name": "string",
         "Kind": 18

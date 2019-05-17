@@ -2,7 +2,6 @@ package rhh
 
 import (
 	"bytes"
-	"encoding/binary"
 	"sort"
 
 	"github.com/cespare/xxhash"
@@ -19,8 +18,6 @@ type HashMap struct {
 	threshold  int64
 	mask       int64
 	loadFactor int
-
-	tmpKey []byte
 }
 
 func NewHashMap(opt Options) *HashMap {
@@ -67,19 +64,16 @@ func (m *HashMap) insert(hash int64, key []byte, val interface{}) (overwritten b
 	pos := hash & m.mask
 	var dist int64
 
-	var copied bool
-	searchKey := key
-
 	// Continue searching until we find an empty slot or lower probe distance.
 	for {
 		e := &m.elems[pos]
 
 		// Empty slot found or matching key, insert and exit.
-		match := bytes.Equal(m.elems[pos].key, searchKey)
+		match := bytes.Equal(m.elems[pos].key, key)
 		if m.hashes[pos] == 0 || match {
 			m.hashes[pos] = hash
 			e.hash, e.value = hash, val
-			e.setKey(searchKey)
+			e.setKey(key)
 			return match
 		}
 
@@ -91,16 +85,11 @@ func (m *HashMap) insert(hash int64, key []byte, val interface{}) (overwritten b
 			hash, m.hashes[pos] = m.hashes[pos], hash
 			val, e.value = e.value, val
 
-			m.tmpKey = assign(m.tmpKey, e.key)
-			e.setKey(searchKey)
+			tmp := make([]byte, len(e.key))
+			copy(tmp, e.key)
 
-			if !copied {
-				searchKey = make([]byte, len(key))
-				copy(searchKey, key)
-				copied = true
-			}
-
-			searchKey = assign(searchKey, m.tmpKey)
+			e.setKey(key)
+			key = tmp
 
 			// Update current distance.
 			dist = elemDist
@@ -218,7 +207,15 @@ func (e *hashElem) reset() {
 
 // setKey copies v to a key on e.
 func (e *hashElem) setKey(v []byte) {
-	e.key = assign(e.key, v)
+	// Shrink or grow key to fit value.
+	if len(e.key) > len(v) {
+		e.key = e.key[:len(v)]
+	} else if len(e.key) < len(v) {
+		e.key = append(e.key, make([]byte, len(v)-len(e.key))...)
+	}
+
+	// Copy value to key.
+	copy(e.key, v)
 }
 
 // Options represents initialization options that are passed to NewHashMap().
@@ -244,13 +241,6 @@ func HashKey(key []byte) int64 {
 	return h
 }
 
-// HashUint64 computes a hash of an int64. Hash is always non-zero.
-func HashUint64(key uint64) int64 {
-	buf := make([]byte, 8)
-	binary.BigEndian.PutUint64(buf, key)
-	return HashKey(buf)
-}
-
 // Dist returns the probe distance for a hash in a slot index.
 // NOTE: Capacity must be a power of 2.
 func Dist(hash, i, capacity int64) int64 {
@@ -268,15 +258,6 @@ func pow2(v int64) int64 {
 		}
 	}
 	panic("unreachable")
-}
-
-func assign(x, v []byte) []byte {
-	if cap(x) < len(v) {
-		x = make([]byte, len(v))
-	}
-	x = x[:len(v)]
-	copy(x, v)
-	return x
 }
 
 type byteSlices [][]byte
