@@ -401,9 +401,9 @@ func EtcdKeyValueParse(key, value []byte, get bool) {
 		etcdLastValue = string(value)
 		etcdLastJson = *jsonBody
 		if len(path) == 3 {
-			GobgpNeighborAdd(path[2], jsonBody.Body)
+			GobgpNeighborAdd(path[2], string(value))
 		} else {
-			GobgpParse(jsonBody.Body)
+			GobgpParse(string(value))
 		}
 	case "vrf":
 		etcdLastVrfJson = *jsonBody
