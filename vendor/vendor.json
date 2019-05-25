@@ -1,0 +1,157 @@
+{
+	"comment": "",
+	"ignore": "",
+	"package": [
+		{
+			"checksumSHA1": "C3vYm4bMePcm9iiy7uPLmXscNNE=",
+			"path": "github.com/hpcloud/tail",
+			"revision": "a1dbeea552b7c8df4b542c66073e393de198a800",
+			"revisionTime": "2018-05-14T19:44:41Z"
+		},
+		{
+			"checksumSHA1": "9bJD/LWDaZZcSS8JSgKS3vrIqK0=",
+			"path": "github.com/hpcloud/tail/ratelimiter",
+			"revision": "a1dbeea552b7c8df4b542c66073e393de198a800",
+			"revisionTime": "2018-05-14T19:44:41Z"
+		},
+		{
+			"checksumSHA1": "0xM336Lb25URO/1W1/CtGoRygVU=",
+			"path": "github.com/hpcloud/tail/util",
+			"revision": "a1dbeea552b7c8df4b542c66073e393de198a800",
+			"revisionTime": "2018-05-14T19:44:41Z"
+		},
+		{
+			"checksumSHA1": "FiJAmivBCwCbJCC3nPSgTgqGyfU=",
+			"path": "github.com/hpcloud/tail/watch",
+			"revision": "a1dbeea552b7c8df4b542c66073e393de198a800",
+			"revisionTime": "2018-05-14T19:44:41Z"
+		},
+		{
+			"checksumSHA1": "j65V4wnJboT4pfppNC/gjr2Gl+c=",
+			"path": "github.com/hpcloud/tail/winfile",
+			"revision": "a1dbeea552b7c8df4b542c66073e393de198a800",
+			"revisionTime": "2018-05-14T19:44:41Z"
+		},
+		{
+			"checksumSHA1": "+gE0KvV8B34qgCPyxN6oyT/+usk=",
+			"path": "github.com/onsi/ginkgo",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "U1qv6onr8N65kkac/cTKECbcgXc=",
+			"path": "github.com/onsi/ginkgo/config",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "U7i1Cm1HSG2bcjS88a48w5JhG+U=",
+			"path": "github.com/onsi/ginkgo/internal/codelocation",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "p0+LKyzGosdM5namXNhJHBuP8HQ=",
+			"path": "github.com/onsi/ginkgo/internal/containernode",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "YXukUqtSZk/6dOoq02fRfp7HBtI=",
+			"path": "github.com/onsi/ginkgo/internal/failer",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "Occ09t4/dTHYgPjIY36EhXEcK0E=",
+			"path": "github.com/onsi/ginkgo/internal/leafnodes",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "81OiKa77O8Shqwp0DijH9KffRes=",
+			"path": "github.com/onsi/ginkgo/internal/remote",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "m3nWVjvGP+NdlLhz3NaobDgpWj4=",
+			"path": "github.com/onsi/ginkgo/internal/spec",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "sTkZQ0oNhcgJuY3UofiiawMwQTo=",
+			"path": "github.com/onsi/ginkgo/internal/spec_iterator",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "FjOb+JN96MvESaQH3bQPaT8Bmfw=",
+			"path": "github.com/onsi/ginkgo/internal/specrunner",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "qaeq8r7OlKWfBzkQTVjCzf3pxus=",
+			"path": "github.com/onsi/ginkgo/internal/suite",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "TUBH2aNaARtAZ5vz51xMFRsOOo0=",
+			"path": "github.com/onsi/ginkgo/internal/testingtproxy",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "ayOcsEHiTIDAxJdeFpeZlytFDig=",
+			"path": "github.com/onsi/ginkgo/internal/writer",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "KGygdlT/DFLmREcjDkv9L2OknkI=",
+			"path": "github.com/onsi/ginkgo/reporters",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "jB2ZheFRNbdaT8goyzoCmXs050I=",
+			"path": "github.com/onsi/ginkgo/reporters/stenographer",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "QeB8m9WhRUiL0YKj3n5L0t4mLCg=",
+			"path": "github.com/onsi/ginkgo/reporters/stenographer/support/go-colorable",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "s5EyiKpqSdkyyIUMb226mZc6/Uo=",
+			"path": "github.com/onsi/ginkgo/reporters/stenographer/support/go-isatty",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "H84YHrVWBdwXjzPR+J8HdWG00Cc=",
+			"path": "github.com/onsi/ginkgo/types",
+			"revision": "505cc352255139defb7371000668063d1161e331",
+			"revisionTime": "2018-12-05T15:04:59Z"
+		},
+		{
+			"checksumSHA1": "o48HV7RTuWgAA//aJsiXBdceHSM=",
+			"path": "gopkg.in/fsnotify/fsnotify.v1",
+			"revision": "c2828203cd70a50dcccfb2761f8b1f8ceef9a8e9",
+			"revisionTime": "2018-01-10T05:33:47Z"
+		},
+		{
+			"checksumSHA1": "qECfUJ12ym6rftf0S6TUIN3QmQ0=",
+			"path": "gopkg.in/tomb.v1",
+			"revision": "dd632973f1e7218eb1089048e0798ec9ae7dceb8",
+			"revisionTime": "2014-10-24T13:56:13Z"
+		}
+	],
+	"rootPath": "github.com/hash-set/openconfigd"
+}

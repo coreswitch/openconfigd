@@ -19,6 +19,8 @@ import (
 	"fmt"
 	"net"
 	"sort"
+	"strings"
+	"unsafe"
 
 	"github.com/armon/go-radix"
 	"github.com/osrg/gobgp/packet/bgp"
@@ -40,6 +42,7 @@ type LookupPrefix struct {
 
 type TableSelectOption struct {
 	ID             string
+	AS             uint32
 	LookupPrefixes []*LookupPrefix
 	VRF            *Vrf
 	adj            bool
@@ -53,49 +56,18 @@ type Table struct {
 }
 
 func NewTable(rf bgp.RouteFamily, dsts ...*Destination) *Table {
-	destinations := make(map[string]*Destination)
-	for _, dst := range dsts {
-		destinations[dst.GetNlri().String()] = dst
-	}
-	return &Table{
+	t := &Table{
 		routeFamily:  rf,
-		destinations: destinations,
+		destinations: make(map[string]*Destination),
 	}
+	for _, dst := range dsts {
+		t.setDestination(dst)
+	}
+	return t
 }
 
 func (t *Table) GetRoutefamily() bgp.RouteFamily {
 	return t.routeFamily
-}
-
-func (t *Table) insert(path *Path) *Destination {
-	t.validatePath(path)
-	dest := t.getOrCreateDest(path.GetNlri())
-
-	if path.IsWithdraw {
-		// withdraw insert
-		dest.AddWithdraw(path)
-	} else {
-		// path insert
-		dest.AddNewPath(path)
-	}
-	return dest
-}
-
-func (t *Table) DeleteDestByPeer(peerInfo *PeerInfo) []*Destination {
-	dsts := []*Destination{}
-	for _, dst := range t.destinations {
-		match := false
-		for _, p := range dst.knownPathList {
-			if p.GetSource().Equal(peerInfo) {
-				dst.AddWithdraw(p)
-				match = true
-			}
-		}
-		if match {
-			dsts = append(dsts, dst)
-		}
-	}
-	return dsts
 }
 
 func (t *Table) deletePathsByVrf(vrf *Vrf) []*Path {
@@ -147,15 +119,11 @@ func (t *Table) deleteRTCPathsByVrf(vrf *Vrf, vrfs map[string]*Vrf) []*Path {
 }
 
 func (t *Table) deleteDestByNlri(nlri bgp.AddrPrefixInterface) *Destination {
-	destinations := t.GetDestinations()
-	dest := destinations[t.tableKey(nlri)]
-	if dest != nil {
-		delete(destinations, t.tableKey(nlri))
-		if len(destinations) == 0 {
-			t.destinations = make(map[string]*Destination)
-		}
+	if dst := t.GetDestination(nlri); dst != nil {
+		t.deleteDest(dst)
+		return dst
 	}
-	return dest
+	return nil
 }
 
 func (t *Table) deleteDest(dest *Destination) {
@@ -209,16 +177,15 @@ func (t *Table) validatePath(path *Path) {
 }
 
 func (t *Table) getOrCreateDest(nlri bgp.AddrPrefixInterface) *Destination {
-	tableKey := t.tableKey(nlri)
-	dest := t.GetDestination(tableKey)
+	dest := t.GetDestination(nlri)
 	// If destination for given prefix does not exist we create it.
 	if dest == nil {
 		log.WithFields(log.Fields{
 			"Topic": "Table",
-			"Key":   tableKey,
+			"Nlri":  nlri,
 		}).Debugf("create Destination")
-		dest = NewDestination(nlri)
-		t.setDestination(tableKey, dest)
+		dest = NewDestination(nlri, 64)
+		t.setDestination(dest)
 	}
 	return dest
 }
@@ -229,7 +196,7 @@ func (t *Table) GetSortedDestinations() []*Destination {
 	case bgp.RF_IPv4_UC, bgp.RF_IPv6_UC:
 		r := radix.New()
 		for _, dst := range t.GetDestinations() {
-			r.Insert(dst.RadixKey, dst)
+			r.Insert(AddrToRadixkey(dst.nlri), dst)
 		}
 		r.Walk(func(s string, v interface{}) bool {
 			results = append(results, v.(*Destination))
@@ -250,8 +217,8 @@ func (t *Table) GetDestinations() map[string]*Destination {
 func (t *Table) setDestinations(destinations map[string]*Destination) {
 	t.destinations = destinations
 }
-func (t *Table) GetDestination(key string) *Destination {
-	dest, ok := t.destinations[key]
+func (t *Table) GetDestination(nlri bgp.AddrPrefixInterface) *Destination {
+	dest, ok := t.destinations[t.tableKey(nlri)]
 	if ok {
 		return dest
 	} else {
@@ -270,7 +237,7 @@ func (t *Table) GetLongerPrefixDestinations(key string) ([]*Destination, error) 
 		k := CidrToRadixkey(prefix.String())
 		r := radix.New()
 		for _, dst := range t.GetDestinations() {
-			r.Insert(dst.RadixKey, dst)
+			r.Insert(AddrToRadixkey(dst.nlri), dst)
 		}
 		r.WalkPrefix(k, func(s string, v interface{}) bool {
 			results = append(results, v.(*Destination))
@@ -284,18 +251,67 @@ func (t *Table) GetLongerPrefixDestinations(key string) ([]*Destination, error) 
 	return results, nil
 }
 
-func (t *Table) setDestination(key string, dest *Destination) {
-	t.destinations[key] = dest
+func (t *Table) GetEvpnDestinationsWithRouteType(typ string) ([]*Destination, error) {
+	var routeType uint8
+	switch strings.ToLower(typ) {
+	case "a-d":
+		routeType = bgp.EVPN_ROUTE_TYPE_ETHERNET_AUTO_DISCOVERY
+	case "macadv":
+		routeType = bgp.EVPN_ROUTE_TYPE_MAC_IP_ADVERTISEMENT
+	case "multicast":
+		routeType = bgp.EVPN_INCLUSIVE_MULTICAST_ETHERNET_TAG
+	case "esi":
+		routeType = bgp.EVPN_ETHERNET_SEGMENT_ROUTE
+	case "prefix":
+		routeType = bgp.EVPN_IP_PREFIX
+	default:
+		return nil, fmt.Errorf("unsupported evpn route type: %s", typ)
+	}
+	destinations := t.GetDestinations()
+	results := make([]*Destination, 0, len(destinations))
+	switch t.routeFamily {
+	case bgp.RF_EVPN:
+		for _, dst := range destinations {
+			if nlri, ok := dst.nlri.(*bgp.EVPNNLRI); !ok {
+				return nil, fmt.Errorf("invalid evpn nlri type detected: %T", dst.nlri)
+			} else if nlri.RouteType == routeType {
+				results = append(results, dst)
+			}
+		}
+	default:
+		for _, dst := range destinations {
+			results = append(results, dst)
+		}
+	}
+	return results, nil
+}
+
+func (t *Table) setDestination(dst *Destination) {
+	t.destinations[t.tableKey(dst.nlri)] = dst
 }
 
 func (t *Table) tableKey(nlri bgp.AddrPrefixInterface) string {
+	switch t.routeFamily {
+	case bgp.RF_IPv4_UC:
+		b := make([]byte, 5)
+		ip := nlri.(*bgp.IPAddrPrefix)
+		copy(b, ip.Prefix.To4())
+		b[4] = ip.Length
+		return *(*string)(unsafe.Pointer(&b))
+	case bgp.RF_IPv6_UC:
+		b := make([]byte, 17)
+		ip := nlri.(*bgp.IPv6AddrPrefix)
+		copy(b, ip.Prefix.To16())
+		b[16] = ip.Length
+		return *(*string)(unsafe.Pointer(&b))
+	}
 	return nlri.String()
 }
 
-func (t *Table) Bests(id string) []*Path {
+func (t *Table) Bests(id string, as uint32) []*Path {
 	paths := make([]*Path, 0, len(t.destinations))
 	for _, dst := range t.destinations {
-		path := dst.GetBestPath(id)
+		path := dst.GetBestPath(id, as)
 		if path != nil {
 			paths = append(paths, path)
 		}
@@ -314,10 +330,10 @@ func (t *Table) MultiBests(id string) [][]*Path {
 	return paths
 }
 
-func (t *Table) GetKnownPathList(id string) []*Path {
+func (t *Table) GetKnownPathList(id string, as uint32) []*Path {
 	paths := make([]*Path, 0, len(t.destinations))
 	for _, dst := range t.destinations {
-		paths = append(paths, dst.GetKnownPathList(id)...)
+		paths = append(paths, dst.GetKnownPathList(id, as)...)
 	}
 	return paths
 }
@@ -329,6 +345,7 @@ func (t *Table) Select(option ...TableSelectOption) (*Table, error) {
 	prefixes := make([]*LookupPrefix, 0, len(option))
 	best := false
 	mp := false
+	as := uint32(0)
 	for _, o := range option {
 		if o.ID != "" {
 			id = o.ID
@@ -340,17 +357,27 @@ func (t *Table) Select(option ...TableSelectOption) (*Table, error) {
 		prefixes = append(prefixes, o.LookupPrefixes...)
 		best = o.Best
 		mp = o.MultiPath
+		as = o.AS
 	}
-	dOption := DestinationSelectOption{ID: id, VRF: vrf, adj: adj, Best: best, MultiPath: mp}
-	dsts := make(map[string]*Destination)
+	dOption := DestinationSelectOption{ID: id, AS: as, VRF: vrf, adj: adj, Best: best, MultiPath: mp}
+	r := &Table{
+		routeFamily:  t.routeFamily,
+		destinations: make(map[string]*Destination),
+	}
 
 	if len(prefixes) != 0 {
 		switch t.routeFamily {
-		case bgp.RF_IPv4_UC, bgp.RF_IPv6_UC, bgp.RF_IPv4_MPLS, bgp.RF_IPv6_MPLS:
-			f := func(key string) bool {
-				if dst := t.GetDestination(key); dst != nil {
+		case bgp.RF_IPv4_UC, bgp.RF_IPv6_UC:
+			f := func(prefixStr string) bool {
+				var nlri bgp.AddrPrefixInterface
+				if t.routeFamily == bgp.RF_IPv4_UC {
+					nlri, _ = bgp.NewPrefixFromRouteFamily(bgp.AFI_IP, bgp.SAFI_UNICAST, prefixStr)
+				} else {
+					nlri, _ = bgp.NewPrefixFromRouteFamily(bgp.AFI_IP6, bgp.SAFI_UNICAST, prefixStr)
+				}
+				if dst := t.GetDestination(nlri); dst != nil {
 					if d := dst.Select(dOption); d != nil {
-						dsts[key] = d
+						r.setDestination(d)
 						return true
 					}
 				}
@@ -367,7 +394,7 @@ func (t *Table) Select(option ...TableSelectOption) (*Table, error) {
 					}
 					for _, dst := range ds {
 						if d := dst.Select(dOption); d != nil {
-							dsts[dst.GetNlri().String()] = d
+							r.setDestination(d)
 						}
 					}
 				case LOOKUP_SHORTER:
@@ -400,20 +427,30 @@ func (t *Table) Select(option ...TableSelectOption) (*Table, error) {
 					}
 				}
 			}
+		case bgp.RF_EVPN:
+			for _, p := range prefixes {
+				// Uses LookupPrefix.Prefix as EVPN Route Type string
+				ds, err := t.GetEvpnDestinationsWithRouteType(p.Prefix)
+				if err != nil {
+					return nil, err
+				}
+				for _, dst := range ds {
+					if d := dst.Select(dOption); d != nil {
+						r.setDestination(d)
+					}
+				}
+			}
 		default:
-			return nil, fmt.Errorf("route filtering is only supported for IPv4/IPv6 unicast/mpls routes")
+			return nil, fmt.Errorf("route filtering is not supported for this family")
 		}
 	} else {
-		for k, dst := range t.GetDestinations() {
+		for _, dst := range t.GetDestinations() {
 			if d := dst.Select(dOption); d != nil {
-				dsts[k] = d
+				r.setDestination(d)
 			}
 		}
 	}
-	return &Table{
-		routeFamily:  t.routeFamily,
-		destinations: dsts,
-	}, nil
+	return r, nil
 }
 
 type TableInfo struct {
@@ -422,10 +459,10 @@ type TableInfo struct {
 	NumAccepted    int
 }
 
-func (t *Table) Info(id string) *TableInfo {
+func (t *Table) Info(id string, as uint32) *TableInfo {
 	var numD, numP int
 	for _, d := range t.destinations {
-		ps := d.GetKnownPathList(id)
+		ps := d.GetKnownPathList(id, as)
 		if len(ps) > 0 {
 			numD += 1
 			numP += len(ps)

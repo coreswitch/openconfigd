@@ -1,4 +1,4 @@
-# Configuration example
+# Configuration Example
 
 ```toml
 [global.config]
@@ -17,9 +17,6 @@
         default-import-policy = "reject-route"
         export-policy-list = ["policy2"]
         default-export-policy = "accept-route"
-    [global.mpls-label-range]
-        min-label = 1000
-        max-label = 2000
 
 [[rpki-servers]]
     [rpki-servers.config]
@@ -33,16 +30,30 @@
         route-monitoring-policy = "pre-policy"
         statistics-timeout = 3600
 
+[[vrfs]]
+    [vrfs.config]
+        name = "vrf1"
+        # If id is omitted, automatically assigned.
+        id = 1
+        rd = "65000:100"
+        # Each configuration for import and export RTs;
+        # import-rt-list
+        # export-rt-list
+        # are preferred than both-rt-list.
+        both-rt-list = ["65000:100"]
+
 [[mrt-dump]]
-    dump-type = "updates"
-    file-name = "/tmp/log/2006/01/02.1504.dump"
-    interval = 180
+    [mrt-dump.config]
+        dump-type = "updates"
+        file-name = "/tmp/log/2006/01/02.1504.dump"
+        dump-interval = 180
 
 [zebra]
     [zebra.config]
         enabled = true
         url = "unix:/var/run/quagga/zserv.api"
         redistribute-route-type-list = ["connect"]
+        version = 2  # version used in Quagga on Ubuntu 16.04
 
 [[neighbors]]
     [neighbors.config]
@@ -73,6 +84,7 @@
         route-reflector-client = true
         route-reflector-cluster-id = "192.168.0.1"
     [neighbors.add-paths.config]
+        send-max = 8
         receive = true
     [neighbors.graceful-restart.config]
         enabled = true
@@ -92,6 +104,10 @@
            enabled = true
            # long lived graceful restart restart time
            restart-time = 100000
+        [neighbors.afi-safis.add-paths.config]
+           # override neighbors.add-paths.config
+           receive = true
+           send-max = 8
     [[neighbors.afi-safis]]
         [neighbors.afi-safis.config]
         afi-safi-name = "ipv6-unicast"
@@ -126,6 +142,7 @@
         [neighbors.afi-safis.config]
         afi-safi-name = "ipv6-flowspec"
     [[neighbors.afi-safis]]
+        [neighbors.afi-safis.config]
         afi-safi-name = "opaque"
     [neighbors.apply-policy.config]
         import-policy-list = ["policy1"]
@@ -163,7 +180,7 @@
         masklength-range = "24..32"
 [[defined-sets.neighbor-sets]]
    neighbor-set-name = "ns0"
-   neighbor-info-list = ["192.168.10.2"]
+   neighbor-info-list = ["192.168.10.2", "172.13.0.0/24"]
 [[defined-sets.bgp-defined-sets.community-sets]]
     community-set-name = "cs0"
     community-list = ["100:100"]
@@ -190,7 +207,7 @@
             community-set = "cs0"
             match-set-options = "all"
         [policy-definitions.statements.conditions.bgp-conditions.match-large-community-set]
-            community-set = "ls0"
+            large-community-set = "ls0"
             match-set-options = "all"
         [policy-definitions.statements.actions.bgp-actions.set-as-path-prepend]
             as = "last-as"
@@ -245,11 +262,18 @@
             options = "remove"
             [policy-definitions.statements.actions.bgp-actions.set-ext-community.set-ext-community-method]
                 communities-list = ["soo:500:600", "rt:700:800"]
+    [[policy-definitions.statements]]
+        [policy-definitions.statements.conditions.bgp-conditions]
+            next-hop-in-list = [
+               "10.0.100.1/32"
+            ]
+        [policy-definitions.statements.actions]
+            route-disposition = "accept-route"
 
 [[policy-definitions]]
     name = "route-type-policy"
     [[policy-definitions.statements]]
-        # this statement matches with locally generated routes 
+        # this statement matches with locally generated routes
         [policy-definitions.statements.conditions.bgp-conditions]
             route-type = "local"
         [policy-definitions.statements.actions]

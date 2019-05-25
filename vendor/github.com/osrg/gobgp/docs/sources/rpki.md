@@ -5,17 +5,16 @@ This page explains how to use a Resource Public Key Infrastructure
 
 ## Prerequisites
 
-Assume you finished [Getting Started](https://github.com/osrg/gobgp/blob/master/docs/sources/getting-started.md).
+Assume you finished [Getting Started](getting-started.md).
 
 ## Contents
 
-- [Configuration](#section0)
-- [Validation](#section1)
-- [Policy with validation results](#section2)
-- [Force Re-validation](#section3)
-- [Monitoring validation](#section4)
+- [Configuration](#configuration)
+- [Validation](#validation)
+- [Policy with validation results](#policy-with-validation-results)
+- [Force Re-validation](#force-re-validation)
 
-## <a name="section0"> Configuration
+## Configuration
 
 You need to add **[RpkiServers]** section to your configuration
 file. We use the following file. Note that this is for route server
@@ -46,7 +45,7 @@ router-id = "10.0.255.254"
     port = 323
 ```
 
-## <a name="section1"> Validation
+## Validation
 
 You can verify whether gobgpd successfully connects to the RPKI server
 and get the ROA (Route Origin Authorization) information in the
@@ -100,11 +99,9 @@ $ gobgp neighbor 10.0.255.1 adj-in
 As you can see, the first is marked as "V" (Valid), the second as "I"
 (Invalid), and the third as "N" (Not Found).
 
+## Policy with validation results
 
-## <a name="section2"> Policy with validation results
-
-The validation result can be used as [Policy's
-condition](https://github.com/osrg/gobgp/blob/master/docs/sources/policy.md). You
+The validation result can be used as [Policy's condition](policy.md). You
 can do any actions (e.g., drop the route, adding some extended
 community attribute, etc) according to the validation result. As an
 example, this section shows how to drop an invalid route.
@@ -175,7 +172,30 @@ $ gobgp neighbor 10.0.255.2 local
     N*> 192.168.1.0/24   10.0.255.1           65001                00:00:21   [{Origin: i}]
 ```
 
-## <a name="section3"> Force Re-validation
+### Detailed Information about validation
+
+You can get the detailed information about announced routes.
+
+```bash
+$ gobgp neighbor 10.0.255.1 adj-in 2.1.0.0/16 validation
+Target Prefix: 2.1.0.0/16, AS: 65001
+  This route is invalid  reason: as
+  No VRP ASN matches the route origin ASN.
+
+  Matched VRPs:
+    No Entry
+  Unmatched AS VRPs:
+    Network            AS    MaxLen
+    2.0.0.0/12         3215  16
+    2.1.0.0/16         3215  16
+  Unmatched Length VRPs:
+    No Entry
+```
+
+From this, we can notice that 2.1.0.0/16 (Origin AS: 65001) is invalid due to its origin AS,
+the origin AS should be 3215.
+
+## Force Re-validation
 
 Validation is executed every time bgp update messages arrive. The
 changes of ROAs doesn't trigger off validation. The following command
@@ -184,17 +204,3 @@ enables you to validate all the routes.
 ```bash
 $ gobgp rpki validate
 ```
-
-## <a name="section4"> Monitoring validation
-
-You can monitor the validation results in real-time.
-
-```bash
-$ gobgp monitor rpki
-[VALIDATION] Reason: Update, Peer: 10.0.255.1, Timestamp: 2016-01-18 06:47:33 -0800 PST, Prefix:217.196.16.0/20, OriginAS:24651, ASPath:24651, Old:NONE, New:INVALID, ROAs: [Source: 210.173.170.254:323, AS: 6453, Prefix: 217.196.16.0, Prefixlen: 20, Maxlen: 20], [Source: 210.173.170.254:323, AS: 6854, Prefix: 217.196.16.0, Prefixlen: 20, Maxlen: 20], [Source: 210.173.170.254:323, AS: 41798, Prefix: 217.196.16.0, Prefixlen: 20, Maxlen: 20], [Source: 210.173.170.254:323, AS: 43994, Prefix: 217.196.16.0, Prefixlen: 20, Maxlen: 20]
-[VALIDATION] Reason: PeerDown, Peer: 10.0.255.3, Timestamp: 2016-01-18 06:47:33 -0800 PST, Prefix:223.27.80.0/24, OriginAS:65003, ASPath:65003, Old:INVALID, New:INVALID
-```
-
-Notification is sent when the validation result of a route changes to
-invalid or non-invalid. Notification is also sent when an invalid
-route is withdrawn.

@@ -9,6 +9,7 @@ gobgpd/gobgpd
 # Folders
 _obj
 _test
+vendor
 
 # Architecture specific extensions/prefixes
 *.[568vq]
@@ -22,6 +23,12 @@ _cgo_export.*
 
 _testmain.go
 
+test/scenario_test/nosetest*.xml
+
 *.exe
 *.test
 *.prof
+
+# IDE workspace
+.idea
+.vscode

@@ -585,10 +585,6 @@ module gobgp {
     }
   }
 
-  grouping gobgp-bmp-server-state {
-    description "additional BMP state";
-  }
-
   grouping gobgp-bmp-server-set {
     description "additional BMP configuration and state";
 
@@ -601,7 +597,7 @@ module gobgp {
     container state {
       description
         "Configuration parameters relating to BMP server";
-      uses gobgp-bmp-server-state;
+      uses gobgp-bmp-server-config;
     }
   }
 
@@ -619,6 +615,90 @@ module gobgp {
           }
         }
         uses gobgp-bmp-server-set;
+      }
+    }
+  }
+  grouping gobgp-vrf-common {
+    description
+      "Common parameters for VRF configuration and state.";
+
+    leaf name {
+      description
+        "Unique name among all VRF instances.";
+      type string;
+    }
+
+    leaf id {
+      description
+        "Unique identifier among all VRF instances.";
+      type uint32;
+    }
+
+    leaf rd {
+      description
+        "Route Distinguisher for this VRF.";
+      type string;
+    }
+
+    leaf-list import-rt {
+      description
+        "List of import Route Targets for this VRF.";
+      type string;
+    }
+
+    leaf-list export-rt {
+      description
+        "List of export Route Targets for this VRF.";
+      type string;
+    }
+  }
+
+  grouping gobgp-vrf-config {
+    description
+      "Configuration parameters for VRF.";
+
+    leaf-list both-rt {
+      description
+        "List of both import and export Route Targets for this VRF. Each
+        configuration for import and export Route Targets will be preferred.";
+      type string;
+    }
+  }
+
+  grouping gobgp-vrf-set {
+    description "Set of VRF instance configuration and state";
+
+    container config {
+      description
+        "Configuration parameters for VRF.";
+      uses gobgp-vrf-common;
+      uses gobgp-vrf-config;
+    }
+
+    container state {
+      description
+        "Configured states of VRF.";
+      uses gobgp-vrf-common;
+    }
+  }
+
+  grouping gobgp-vrfs {
+    description
+      "Virtual Routing and Forwarding (VRF) instances.";
+
+    container vrfs {
+      list vrf {
+        description
+          "VRF instance configurations on the local system.";
+
+        key "name";
+        leaf name {
+          type leafref {
+            path "../config/name";
+          }
+        }
+
+        uses gobgp-vrf-set;
       }
     }
   }
@@ -916,7 +996,7 @@ module gobgp {
 
     leaf-list neighbor-info {
       description
-            "neighbor ip address";
+            "neighbor ip address or prefix";
       type inet:ip-address;
     }
   }
@@ -1029,13 +1109,18 @@ module gobgp {
   }
 
   augment "/bgp:bgp" {
-    description "additional rpki configuration and state";
+    description "Additional RPKI configuration and state";
     uses gobgp-rpki-servers;
   }
 
   augment "/bgp:bgp" {
-    description "additional bmp configuration";
+    description "Additional BMP configuration and state";
     uses gobgp-bmp-servers;
+  }
+
+  augment "/bgp:bgp" {
+    description "Additional VRF configuration and state";
+    uses gobgp-vrfs;
   }
 
   typedef mrt-type {
@@ -1221,6 +1306,22 @@ module gobgp {
     uses dynamic-neighbors;
   }
 
+  grouping disable-best-path-selection-config {
+    leaf disable-best-path-selection {
+      type boolean;
+      description
+        "Disables best path selection process.";
+    }
+  }
+
+  augment "/bgp:bgp/bgp:global/bgp:route-selection-options/bgp:config" {
+    uses disable-best-path-selection-config;
+  }
+
+  augment "/bgp:bgp/bgp:global/bgp:route-selection-options/bgp:state" {
+    uses disable-best-path-selection-config;
+  }
+
   augment "/bgp:bgp/bgp:global/bgp:afi-safis/bgp:afi-safi" {
       uses bgp-mp:all-afi-safi-common;
   }
@@ -1229,6 +1330,18 @@ module gobgp {
       leaf deferral-time {
         type uint16;
       }
+  }
+
+  grouping afi-safi-state {
+    leaf family {
+      description
+        "Address family value of AFI-SAFI pair translated from afi-safi-name.";
+      type route-family;
+    }
+  }
+
+  augment "/bgp:bgp/bgp:global/bgp:afi-safis/bgp:afi-safi/bgp:state" {
+      uses afi-safi-state;
   }
 
   augment "/bgp:bgp/bgp:global/bgp:afi-safis/bgp:afi-safi" {
@@ -1240,7 +1353,20 @@ module gobgp {
           uses route-target-membership-config;
       }
     }
-    
+
     uses long-lived-graceful-restart;
+  }
+
+  augment "/bgp:bgp/bgp:global/bgp:afi-safis/bgp:afi-safi" {
+    container add-paths {
+      description
+        "add-paths configuration options related to a particular AFI-SAFI.";
+      container config {
+          uses bgp:bgp-neighbor-add-paths_config;
+      }
+      container state {
+          uses bgp:bgp-neighbor-add-paths_config;
+      }
+    }
   }
 }

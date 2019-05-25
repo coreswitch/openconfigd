@@ -1,11 +1,12 @@
 package config
 
 import (
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/viper"
 	"os"
 	"os/signal"
 	"syscall"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 type BgpConfigSet struct {
@@ -14,6 +15,7 @@ type BgpConfigSet struct {
 	PeerGroups        []PeerGroup        `mapstructure:"peer-groups"`
 	RpkiServers       []RpkiServer       `mapstructure:"rpki-servers"`
 	BmpServers        []BmpServer        `mapstructure:"bmp-servers"`
+	Vrfs              []Vrf              `mapstructure:"vrfs"`
 	MrtDump           []Mrt              `mapstructure:"mrt-dump"`
 	Zebra             Zebra              `mapstructure:"zebra"`
 	Collector         Collector          `mapstructure:"collector"`
@@ -73,24 +75,6 @@ func ReadConfigfileServe(path, format string, configCh chan *BgpConfigSet) {
 			}).Info("Reload the config file")
 		}
 	}
-}
-
-func inSlice(n Neighbor, b []Neighbor) int {
-	for i, nb := range b {
-		if nb.State.NeighborAddress == n.State.NeighborAddress {
-			return i
-		}
-	}
-	return -1
-}
-
-func existPeerGroup(n string, b []PeerGroup) int {
-	for i, nb := range b {
-		if nb.Config.PeerGroupName == n {
-			return i
-		}
-	}
-	return -1
 }
 
 func ConfigSetToRoutingPolicy(c *BgpConfigSet) *RoutingPolicy {

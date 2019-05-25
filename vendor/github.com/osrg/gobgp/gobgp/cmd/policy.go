@@ -25,9 +25,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"github.com/osrg/gobgp/config"
 	"github.com/osrg/gobgp/table"
-	"github.com/spf13/cobra"
 )
 
 func formatDefinedSet(head bool, typ string, indent int, list []table.DefinedSet) string {
@@ -176,7 +177,10 @@ func parseNeighborSet(args []string) (table.DefinedSet, error) {
 	for _, arg := range args {
 		address := net.ParseIP(arg)
 		if address.To4() == nil && address.To16() == nil {
-			return nil, fmt.Errorf("invalid address: %s\nplease enter ipv4 or ipv6 format", arg)
+			_, _, err := net.ParseCIDR(arg)
+			if err != nil {
+				return nil, fmt.Errorf("invalid address or prefix: %s\nplease enter ipv4 or ipv6 format", arg)
+			}
 		}
 	}
 	return table.NewNeighborSet(config.NeighborSet{
@@ -269,7 +273,7 @@ func parseDefinedSet(settype string, args []string) (table.DefinedSet, error) {
 	case CMD_LARGECOMMUNITY:
 		return parseLargeCommunitySet(args)
 	default:
-		return nil, fmt.Errorf("invalid setype: %s", settype)
+		return nil, fmt.Errorf("invalid defined set type: %s", settype)
 	}
 }
 
@@ -329,12 +333,16 @@ func printStatement(indent int, s *table.Statement) {
 			fmt.Printf("%sExtCommunitySet: %s %s\n", ind, t.Option(), t.Name())
 		case *table.LargeCommunityCondition:
 			fmt.Printf("%sLargeCommunitySet: %s %s\n", ind, t.Option(), t.Name())
+		case *table.NextHopCondition:
+			fmt.Printf("%sNextHopInList: %s\n", ind, t.String())
 		case *table.AsPathLengthCondition:
 			fmt.Printf("%sAsPathLength: %s\n", ind, t.String())
 		case *table.RpkiValidationCondition:
 			fmt.Printf("%sRPKI result: %s\n", ind, t.String())
 		case *table.RouteTypeCondition:
 			fmt.Printf("%sRoute Type: %s\n", ind, t.String())
+		case *table.AfiSafiInCondition:
+			fmt.Printf("%sAFI SAFI In: %s\n", ind, t.String())
 		}
 	}
 
@@ -476,7 +484,7 @@ func modCondition(name, op string, args []string) error {
 	}
 	usage := fmt.Sprintf("usage: gobgp policy statement %s %s condition", name, op)
 	if len(args) < 1 {
-		return fmt.Errorf("%s { prefix | neighbor | as-path | community | ext-community | large-community | as-path-length | rpki | route-type }", usage)
+		return fmt.Errorf("%s { prefix | neighbor | as-path | community | ext-community | large-community | as-path-length | rpki | route-type | next-hop-in-list | afi-safi-in }", usage)
 	}
 	typ := args[0]
 	args = args[1:]
@@ -589,7 +597,7 @@ func modCondition(name, op string, args []string) error {
 		if len(args) < 2 {
 			return fmt.Errorf("%s as-path-length <length> { eq | ge | le }", usage)
 		}
-		length, err := strconv.Atoi(args[0])
+		length, err := strconv.ParseUint(args[0], 10, 32)
 		if err != nil {
 			return err
 		}
@@ -633,8 +641,20 @@ func modCondition(name, op string, args []string) error {
 		default:
 			return err
 		}
+	case "next-hop-in-list":
+		stmt.Conditions.BgpConditions.NextHopInList = args
+	case "afi-safi-in":
+		afiSafisInList := make([]config.AfiSafiType, 0, len(args))
+		for _, arg := range args {
+			afiSafi := config.AfiSafiType(arg)
+			if err := afiSafi.Validate(); err != nil {
+				return err
+			}
+			afiSafisInList = append(afiSafisInList, afiSafi)
+		}
+		stmt.Conditions.BgpConditions.AfiSafiInList = afiSafisInList
 	default:
-		return fmt.Errorf("%s { prefix | neighbor | as-path | community | ext-community | large-community | as-path-length | rpki | route-type }", usage)
+		return fmt.Errorf("%s { prefix | neighbor | as-path | community | ext-community | large-community | as-path-length | rpki | route-type | next-hop-in-list | afi-safi-in }", usage)
 	}
 
 	t, err := table.NewStatement(stmt)
@@ -718,7 +738,7 @@ func modAction(name, op string, args []string) error {
 		if len(args) < 2 {
 			return fmt.Errorf("%s med { add | sub | set } <value>", usage)
 		}
-		med, err := strconv.Atoi(args[1])
+		med, err := strconv.ParseUint(args[1], 10, 32)
 		if err != nil {
 			return err
 		}
@@ -746,7 +766,7 @@ func modAction(name, op string, args []string) error {
 			return fmt.Errorf("%s as-prepend { <asn> | last-as } <repeat-value>", usage)
 		}
 		stmt.Actions.BgpActions.SetAsPathPrepend.As = args[0]
-		repeat, err := strconv.Atoi(args[1])
+		repeat, err := strconv.ParseUint(args[1], 10, 8)
 		if err != nil {
 			return err
 		}

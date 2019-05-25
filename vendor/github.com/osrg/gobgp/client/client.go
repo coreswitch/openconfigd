@@ -18,16 +18,18 @@ package client
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"time"
+
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
 
 	api "github.com/osrg/gobgp/api"
 	"github.com/osrg/gobgp/config"
 	"github.com/osrg/gobgp/packet/bgp"
 	"github.com/osrg/gobgp/table"
-	"golang.org/x/net/context"
-	"google.golang.org/grpc"
 )
 
 type Client struct {
@@ -240,34 +242,54 @@ func (cli *Client) SoftReset(addr string, family bgp.RouteFamily) error {
 }
 
 func (cli *Client) getRIB(resource api.Resource, name string, family bgp.RouteFamily, prefixes []*table.LookupPrefix) (*table.Table, error) {
-	dsts := make([]*api.Destination, 0, len(prefixes))
+	prefixList := make([]*api.TableLookupPrefix, 0, len(prefixes))
 	for _, p := range prefixes {
-		longer := false
-		shorter := false
-		if p.LookupOption&table.LOOKUP_LONGER > 0 {
-			longer = true
-		}
-		if p.LookupOption&table.LOOKUP_SHORTER > 0 {
-			shorter = true
-		}
-		dsts = append(dsts, &api.Destination{
-			Prefix:          p.Prefix,
-			LongerPrefixes:  longer,
-			ShorterPrefixes: shorter,
+		prefixList = append(prefixList, &api.TableLookupPrefix{
+			Prefix:       p.Prefix,
+			LookupOption: api.TableLookupOption(p.LookupOption),
 		})
 	}
-	res, err := cli.cli.GetRib(context.Background(), &api.GetRibRequest{
-		Table: &api.Table{
-			Type:         resource,
-			Family:       uint32(family),
-			Name:         name,
-			Destinations: dsts,
-		},
+	stream, err := cli.cli.GetPath(context.Background(), &api.GetPathRequest{
+		Type:     resource,
+		Family:   uint32(family),
+		Name:     name,
+		Prefixes: prefixList,
 	})
 	if err != nil {
 		return nil, err
 	}
-	return res.Table.ToNativeTable()
+	pathMap := make(map[string][]*table.Path)
+	for {
+		p, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+		nlri, err := p.GetNativeNlri()
+		if err != nil {
+			return nil, err
+		}
+		var path *table.Path
+		if p.Identifier > 0 {
+			path, err = p.ToNativePath()
+		} else {
+			path, err = p.ToNativePath(api.ToNativeOption{
+				NLRI: nlri,
+			})
+		}
+		if err != nil {
+			return nil, err
+		}
+		nlriStr := nlri.String()
+		pathMap[nlriStr] = append(pathMap[nlriStr], path)
+	}
+	dstList := make([]*table.Destination, 0, len(pathMap))
+	for _, pathList := range pathMap {
+		dstList = append(dstList, table.NewDestination(pathList[0].GetNlri(), 0, pathList...))
+	}
+	return table.NewTable(family, dstList...), nil
 }
 
 func (cli *Client) GetRIB(family bgp.RouteFamily, prefixes []*table.LookupPrefix) (*table.Table, error) {
@@ -332,7 +354,7 @@ type AddPathByStreamClient struct {
 func (c *AddPathByStreamClient) Send(paths ...*table.Path) error {
 	ps := make([]*api.Path, 0, len(paths))
 	for _, p := range paths {
-		ps = append(ps, api.ToPathApi(p))
+		ps = append(ps, api.ToPathApi(p, nil))
 	}
 	return c.stream.Send(&api.InjectMrtRequest{
 		Resource: api.Resource_GLOBAL,
@@ -363,7 +385,7 @@ func (cli *Client) addPath(vrfID string, pathList []*table.Path) ([]byte, error)
 		r, err := cli.cli.AddPath(context.Background(), &api.AddPathRequest{
 			Resource: resource,
 			VrfId:    vrfID,
-			Path:     api.ToPathApi(path),
+			Path:     api.ToPathApi(path, nil),
 		})
 		if err != nil {
 			return nil, err
@@ -400,8 +422,10 @@ func (cli *Client) deletePath(uuid []byte, f bgp.RouteFamily, vrfID string, path
 				return err
 			}
 			p := &api.Path{
-				Nlri:   n,
-				Family: uint32(path.GetRouteFamily()),
+				Nlri:            n,
+				Family:          uint32(path.GetRouteFamily()),
+				Identifier:      nlri.PathIdentifier(),
+				LocalIdentifier: nlri.PathLocalIdentifier(),
 			}
 			reqs = append(reqs, &api.DeletePathRequest{
 				Resource: resource,
@@ -694,8 +718,6 @@ func (cli *Client) ReplacePolicy(t *table.Policy, refer, preserve bool) error {
 func (cli *Client) getPolicyAssignment(name string, dir table.PolicyDirection) (*table.PolicyAssignment, error) {
 	var typ api.PolicyType
 	switch dir {
-	case table.POLICY_DIRECTION_IN:
-		typ = api.PolicyType_IN
 	case table.POLICY_DIRECTION_IMPORT:
 		typ = api.PolicyType_IMPORT
 	case table.POLICY_DIRECTION_EXPORT:
@@ -746,10 +768,6 @@ func (cli *Client) GetExportPolicy() (*table.PolicyAssignment, error) {
 	return cli.getPolicyAssignment("", table.POLICY_DIRECTION_EXPORT)
 }
 
-func (cli *Client) GetRouteServerInPolicy(name string) (*table.PolicyAssignment, error) {
-	return cli.getPolicyAssignment(name, table.POLICY_DIRECTION_IN)
-}
-
 func (cli *Client) GetRouteServerImportPolicy(name string) (*table.PolicyAssignment, error) {
 	return cli.getPolicyAssignment(name, table.POLICY_DIRECTION_IMPORT)
 }
@@ -794,7 +812,9 @@ func (cli *Client) GetRPKI() ([]*config.RpkiServer, error) {
 	}
 	servers := make([]*config.RpkiServer, 0, len(rsp.Servers))
 	for _, s := range rsp.Servers {
-		port, err := strconv.Atoi(s.Conf.RemotePort)
+		// Note: RpkiServerConfig.Port is uint32 type, but the TCP/UDP port is
+		// 16-bit length.
+		port, err := strconv.ParseUint(s.Conf.RemotePort, 10, 16)
 		if err != nil {
 			return nil, err
 		}
@@ -841,17 +861,7 @@ func (cli *Client) GetROA(family bgp.RouteFamily) ([]*table.ROA, error) {
 	if err != nil {
 		return nil, err
 	}
-	roas := make([]*table.ROA, 0, len(rsp.Roas))
-	for _, r := range rsp.Roas {
-		ip := net.ParseIP(r.Prefix)
-		if ip.To4() != nil {
-			ip = ip.To4()
-		}
-		afi, _ := bgp.RouteFamilyToAfiSafi(family)
-		roa := table.NewROA(int(afi), []byte(ip), uint8(r.Prefixlen), uint8(r.Maxlen), r.As, net.JoinHostPort(r.Conf.Address, r.Conf.RemotePort))
-		roas = append(roas, roa)
-	}
-	return roas, nil
+	return api.NewROAListFromApiStructList(rsp.Roas), nil
 }
 
 func (cli *Client) AddRPKIServer(address string, port, lifetime int) error {
@@ -979,16 +989,10 @@ func (c *MonitorNeighborStateClient) Recv() (*config.Neighbor, error) {
 	return api.NewNeighborFromAPIStruct(p)
 }
 
-func (cli *Client) MonitorNeighborState(names ...string) (*MonitorNeighborStateClient, error) {
-	if len(names) > 1 {
-		return nil, fmt.Errorf("support one name at most: %d", len(names))
-	}
-	name := ""
-	if len(names) > 0 {
-		name = names[0]
-	}
+func (cli *Client) MonitorNeighborState(name string, current bool) (*MonitorNeighborStateClient, error) {
 	stream, err := cli.cli.MonitorPeerState(context.Background(), &api.Arguments{
-		Name: name,
+		Name:    name,
+		Current: current,
 	})
 	if err != nil {
 		return nil, err

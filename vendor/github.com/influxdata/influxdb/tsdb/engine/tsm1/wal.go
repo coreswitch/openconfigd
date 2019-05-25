@@ -557,7 +557,7 @@ func (l *WAL) newSegmentFile() error {
 	}
 
 	fileName := filepath.Join(l.path, fmt.Sprintf("%s%05d.%s", WALFilePrefix, l.currentSegmentID, WALFileExtension))
-	fd, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDWR|os.O_SYNC, 0666)
+	fd, err := os.OpenFile(fileName, os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
 		return err
 	}
@@ -771,6 +771,10 @@ func (w *WriteWALEntry) UnmarshalBinary(b []byte) error {
 
 		nvals := int(binary.BigEndian.Uint32(b[i : i+4]))
 		i += 4
+
+		if nvals <= 0 || nvals > len(b) {
+			return ErrWALCorrupt
+		}
 
 		switch typ {
 		case float64EntryType:

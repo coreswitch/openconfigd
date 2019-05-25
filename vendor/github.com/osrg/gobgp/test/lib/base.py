@@ -48,8 +48,54 @@ BGP_ATTR_TYPE_CLUSTER_LIST = 10
 BGP_ATTR_TYPE_MP_REACH_NLRI = 14
 BGP_ATTR_TYPE_EXTENDED_COMMUNITIES = 16
 
+FLOWSPEC_NAME_TO_TYPE = {
+    "destination": 1,
+    "source": 2,
+    "protocol": 3,
+    "port": 4,
+    "destination-port": 5,
+    "source-port": 6,
+    "icmp-type": 7,
+    "icmp-code": 8,
+    "tcp-flags": 9,
+    "packet-length": 10,
+    "dscp": 11,
+    "fragment": 12,
+    "label": 13,
+    "ether-type": 14,
+    "source-mac": 15,
+    "destination-mac": 16,
+    "llc-dsap": 17,
+    "llc-ssap": 18,
+    "llc-control": 19,
+    "snap": 20,
+    "vid": 21,
+    "cos": 22,
+    "inner-vid": 23,
+    "inner-cos": 24,
+}
+
+# with this label, we can do filtering in `docker ps` and `docker network prune`
+TEST_CONTAINER_LABEL = 'gobgp-test'
+TEST_NETWORK_LABEL = TEST_CONTAINER_LABEL
+
 env.abort_exception = RuntimeError
 output.stderr = False
+
+
+def community_str(i):
+    """
+    Converts integer in to colon separated two bytes decimal strings like
+    BGP Community or Large Community representation.
+
+    For example, this function converts 13107300 = ((200 << 16) | 100)
+    into "200:100".
+    """
+    values = []
+    while i > 0:
+        values.append(str(i & 0xffff))
+        i >>= 16
+    return ':'.join(reversed(values))
 
 
 def wait_for_completion(f, timeout=120):
@@ -74,6 +120,18 @@ def try_several_times(f, t=3, s=1):
             time.sleep(s)
         else:
             return r
+    raise e
+
+
+def assert_several_times(f, t=30, s=1):
+    e = AssertionError
+    for _ in range(t):
+        try:
+            f()
+        except AssertionError as e:
+            time.sleep(s)
+        else:
+            return
     raise e
 
 
@@ -103,10 +161,10 @@ def make_gobgp_ctn(tag='gobgp', local_gobgp_path='', from_image='osrg/quagga'):
 
     c = CmdBuffer()
     c << 'FROM {0}'.format(from_image)
-    c << 'RUN go get -d github.com/osrg/gobgp/...; exit 0'
-    c << 'RUN rm -rf /go/src/github.com/osrg/gobgp'
+    c << 'RUN go get -u github.com/golang/dep/cmd/dep'
+    c << 'RUN mkdir -p /go/src/github.com/osrg/'
     c << 'ADD gobgp /go/src/github.com/osrg/gobgp/'
-    c << 'RUN go get github.com/osrg/gobgp/...'
+    c << 'RUN cd /go/src/github.com/osrg/gobgp && dep ensure && go install ./gobgpd ./gobgp'
 
     rindex = local_gobgp_path.rindex('gobgp')
     if rindex < 0:
@@ -141,7 +199,7 @@ class Bridge(object):
             v6 = ''
             if self.subnet.version == 6:
                 v6 = '--ipv6'
-            self.id = local('docker network create --driver bridge {0} --subnet {1} {2}'.format(v6, subnet, self.name), capture=True)
+            self.id = local('docker network create --driver bridge {0} --subnet {1} --label {2} {3}'.format(v6, subnet, TEST_NETWORK_LABEL, self.name), capture=True)
         try_several_times(f)
 
         self.self_ip = self_ip
@@ -149,6 +207,17 @@ class Bridge(object):
             self.ip_addr = self.next_ip_address()
             try_several_times(lambda: local("ip addr add {0} dev {1}".format(self.ip_addr, self.name)))
         self.ctns = []
+
+        # Note: Here removes routes from the container host to prevent traffic
+        # from going through the container host's routing table.
+        if with_ip:
+            local('ip route del {0}; echo $?'.format(subnet),
+                  capture=True)
+            # When IPv6, 2 routes will be installed to the container host's
+            # routing table.
+            if self.subnet.version == 6:
+                local('ip -6 route del {0}; echo $?'.format(subnet),
+                      capture=True)
 
     def next_ip_address(self):
         return "{0}/{1}".format(self._ip_generator.next(),
@@ -185,7 +254,7 @@ class Container(object):
 
     def docker_name(self):
         if TEST_PREFIX == DEFAULT_TEST_PREFIX:
-            return self.name
+            return '{0}'.format(self.name)
         return '{0}_{1}'.format(TEST_PREFIX, self.name)
 
     def next_if_name(self):
@@ -198,7 +267,7 @@ class Container(object):
         c << "docker run --privileged=true"
         for sv in self.shared_volumes:
             c << "-v {0}:{1}".format(sv[0], sv[1])
-        c << "--name {0} -id {1}".format(self.docker_name(), self.image)
+        c << "--name {0} -l {1} -id {2}".format(self.docker_name(), TEST_CONTAINER_LABEL, self.image)
         self.id = try_several_times(lambda: local(str(c), capture=True))
         self.is_running = True
         self.local("ip li set up dev lo")
@@ -311,7 +380,8 @@ class BGPContainer(Container):
                  flowspec=False, bridge='', reload_config=True, as2=False,
                  graceful_restart=None, local_as=None, prefix_limit=None,
                  v6=False, llgr=None, vrf='', interface='', allow_as_in=0,
-                 remove_private_as=None, replace_peer_as=False, addpath=False):
+                 remove_private_as=None, replace_peer_as=False, addpath=False,
+                 treat_as_withdraw=False, remote_as=None):
         neigh_addr = ''
         local_addr = ''
         it = itertools.product(self.ip_addrs, peer.ip_addrs)
@@ -356,7 +426,9 @@ class BGPContainer(Container):
                             'allow_as_in': allow_as_in,
                             'remove_private_as': remove_private_as,
                             'replace_peer_as': replace_peer_as,
-                            'addpath': addpath}
+                            'addpath': addpath,
+                            'treat_as_withdraw': treat_as_withdraw,
+                            'remote_as': remote_as or peer.asn}
         if self.is_running and reload_config:
             self.create_config()
             self.reload_config()
@@ -376,24 +448,44 @@ class BGPContainer(Container):
     def log(self):
         return local('cat {0}/*.log'.format(self.config_dir), capture=True)
 
+    def _extract_routes(self, families):
+        routes = {}
+        for prefix, paths in self.routes.items():
+            if paths and paths[0]['rf'] in families:
+                routes[prefix] = paths
+        return routes
+
     def add_route(self, route, rf='ipv4', attribute=None, aspath=None,
                   community=None, med=None, extendedcommunity=None,
                   nexthop=None, matchs=None, thens=None,
                   local_pref=None, identifier=None, reload_config=True):
         if route not in self.routes:
             self.routes[route] = []
-        self.routes[route].append({'prefix': route,
-                              'rf': rf,
-                              'attr': attribute,
-                              'next-hop': nexthop,
-                              'as-path': aspath,
-                              'community': community,
-                              'med': med,
-                              'local-pref': local_pref,
-                              'extended-community': extendedcommunity,
-                              'identifier': identifier,
-                              'matchs': matchs,
-                              'thens': thens})
+        prefix = route
+        if 'flowspec' in rf:
+            prefix = ' '.join(['match'] + matchs)
+        self.routes[route].append({
+            'prefix': prefix,
+            'rf': rf,
+            'attr': attribute,
+            'next-hop': nexthop,
+            'as-path': aspath,
+            'community': community,
+            'med': med,
+            'local-pref': local_pref,
+            'extended-community': extendedcommunity,
+            'identifier': identifier,
+            'matchs': matchs,
+            'thens': thens,
+        })
+        if self.is_running and reload_config:
+            self.create_config()
+            self.reload_config()
+
+    def del_route(self, route, identifier=None, reload_config=True):
+        if route not in self.routes:
+            return
+        self.routes[route] = [p for p in self.routes[route] if p['identifier'] != identifier]
         if self.is_running and reload_config:
             self.create_config()
             self.reload_config()
@@ -434,7 +526,7 @@ class BGPContainer(Container):
     def get_neighbor_state(self, peer_id):
         raise Exception('implement get_neighbor() method')
 
-    def get_reachablily(self, prefix, timeout=20):
+    def get_reachability(self, prefix, timeout=20):
         version = netaddr.IPNetwork(prefix).version
         addr = prefix.split('/')[0]
         if version == 4:
@@ -476,11 +568,11 @@ class BGPContainer(Container):
 
     def add_static_route(self, network, next_hop):
         cmd = '/sbin/ip route add {0} via {1}'.format(network, next_hop)
-        self.local(cmd)
+        self.local(cmd, capture=True)
 
     def set_ipv6_forward(self):
         cmd = 'sysctl -w net.ipv6.conf.all.forwarding=1'
-        self.local(cmd)
+        self.local(cmd, capture=True)
 
     def create_config(self):
         raise Exception('implement create_config() method')

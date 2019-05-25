@@ -110,6 +110,7 @@ args, err := flags.ParseArgs(&opts, args)
 
 if err != nil {
 	panic(err)
+	os.Exit(1)
 }
 
 fmt.Printf("Verbosity: %v\n", opts.Verbose)

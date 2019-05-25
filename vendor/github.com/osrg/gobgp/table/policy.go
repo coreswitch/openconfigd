@@ -26,14 +26,18 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/armon/go-radix"
+	log "github.com/sirupsen/logrus"
+
+	radix "github.com/armon/go-radix"
+
 	"github.com/osrg/gobgp/config"
 	"github.com/osrg/gobgp/packet/bgp"
-	log "github.com/sirupsen/logrus"
 )
 
 type PolicyOptions struct {
-	Info *PeerInfo
+	Info             *PeerInfo
+	ValidationResult *Validation
+	OldNextHop       net.IP
 }
 
 type DefinedType int
@@ -46,6 +50,7 @@ const (
 	DEFINED_TYPE_COMMUNITY
 	DEFINED_TYPE_EXT_COMMUNITY
 	DEFINED_TYPE_LARGE_COMMUNITY
+	DEFINED_TYPE_NEXT_HOP
 )
 
 type RouteType int
@@ -151,6 +156,8 @@ const (
 	CONDITION_RPKI
 	CONDITION_ROUTE_TYPE
 	CONDITION_LARGE_COMMUNITY
+	CONDITION_NEXT_HOP
+	CONDITION_AFI_SAFI_IN
 )
 
 type ActionType int
@@ -335,8 +342,8 @@ func NewPrefix(c config.Prefix) (*Prefix, error) {
 			return nil, fmt.Errorf("mask length range format is invalid")
 		}
 		// we've already checked the range is sane by regexp
-		min, _ := strconv.Atoi(elems[1])
-		max, _ := strconv.Atoi(elems[2])
+		min, _ := strconv.ParseUint(elems[1], 10, 8)
+		max, _ := strconv.ParseUint(elems[2], 10, 8)
 		p.MasklengthRangeMin = uint8(min)
 		p.MasklengthRangeMax = uint8(max)
 	}
@@ -532,9 +539,112 @@ func NewPrefixSet(c config.PrefixSet) (*PrefixSet, error) {
 	}, nil
 }
 
+type NextHopSet struct {
+	list []net.IPNet
+}
+
+func (s *NextHopSet) Name() string {
+	return "NextHopSet: NO NAME"
+}
+
+func (s *NextHopSet) Type() DefinedType {
+	return DEFINED_TYPE_NEXT_HOP
+}
+
+func (lhs *NextHopSet) Append(arg DefinedSet) error {
+	rhs, ok := arg.(*NextHopSet)
+	if !ok {
+		return fmt.Errorf("type cast failed")
+	}
+	lhs.list = append(lhs.list, rhs.list...)
+	return nil
+}
+
+func (lhs *NextHopSet) Remove(arg DefinedSet) error {
+	rhs, ok := arg.(*NextHopSet)
+	if !ok {
+		return fmt.Errorf("type cast failed")
+	}
+	ps := make([]net.IPNet, 0, len(lhs.list))
+	for _, x := range lhs.list {
+		found := false
+		for _, y := range rhs.list {
+			if x.String() == y.String() {
+				found = true
+				break
+			}
+		}
+		if !found {
+			ps = append(ps, x)
+		}
+	}
+	lhs.list = ps
+	return nil
+}
+
+func (lhs *NextHopSet) Replace(arg DefinedSet) error {
+	rhs, ok := arg.(*NextHopSet)
+	if !ok {
+		return fmt.Errorf("type cast failed")
+	}
+	lhs.list = rhs.list
+	return nil
+}
+
+func (s *NextHopSet) List() []string {
+	list := make([]string, 0, len(s.list))
+	for _, n := range s.list {
+		list = append(list, n.String())
+	}
+	return list
+}
+
+func (s *NextHopSet) ToConfig() []string {
+	return s.List()
+}
+
+func (s *NextHopSet) String() string {
+	return "[ " + strings.Join(s.List(), ", ") + " ]"
+}
+
+func (s *NextHopSet) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.ToConfig())
+}
+
+func NewNextHopSetFromApiStruct(name string, list []net.IPNet) (*NextHopSet, error) {
+	return &NextHopSet{
+		list: list,
+	}, nil
+}
+
+func NewNextHopSet(c []string) (*NextHopSet, error) {
+	list := make([]net.IPNet, 0, len(c))
+	for _, x := range c {
+		_, cidr, err := net.ParseCIDR(x)
+		if err != nil {
+			addr := net.ParseIP(x)
+			if addr == nil {
+				return nil, fmt.Errorf("invalid address or prefix: %s", x)
+			}
+			mask := net.CIDRMask(32, 32)
+			if addr.To4() == nil {
+				mask = net.CIDRMask(128, 128)
+			}
+			cidr = &net.IPNet{
+				IP:   addr,
+				Mask: mask,
+			}
+		}
+		list = append(list, *cidr)
+	}
+	return &NextHopSet{
+		list: list,
+	}, nil
+}
+
 type NeighborSet struct {
 	name string
-	list []net.IP
+	list []net.IPNet
 }
 
 func (s *NeighborSet) Name() string {
@@ -559,11 +669,11 @@ func (lhs *NeighborSet) Remove(arg DefinedSet) error {
 	if !ok {
 		return fmt.Errorf("type cast failed")
 	}
-	ps := make([]net.IP, 0, len(lhs.list))
+	ps := make([]net.IPNet, 0, len(lhs.list))
 	for _, x := range lhs.list {
 		found := false
 		for _, y := range rhs.list {
-			if x.Equal(y) {
+			if x.String() == y.String() {
 				found = true
 				break
 			}
@@ -608,7 +718,7 @@ func (s *NeighborSet) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.ToConfig())
 }
 
-func NewNeighborSetFromApiStruct(name string, list []net.IP) (*NeighborSet, error) {
+func NewNeighborSetFromApiStruct(name string, list []net.IPNet) (*NeighborSet, error) {
 	return &NeighborSet{
 		name: name,
 		list: list,
@@ -623,13 +733,24 @@ func NewNeighborSet(c config.NeighborSet) (*NeighborSet, error) {
 		}
 		return nil, fmt.Errorf("empty neighbor set name")
 	}
-	list := make([]net.IP, 0, len(c.NeighborInfoList))
+	list := make([]net.IPNet, 0, len(c.NeighborInfoList))
 	for _, x := range c.NeighborInfoList {
-		addr := net.ParseIP(x)
-		if addr == nil {
-			return nil, fmt.Errorf("invalid address: %s", x)
+		_, cidr, err := net.ParseCIDR(x)
+		if err != nil {
+			addr := net.ParseIP(x)
+			if addr == nil {
+				return nil, fmt.Errorf("invalid address or prefix: %s", x)
+			}
+			mask := net.CIDRMask(32, 32)
+			if addr.To4() == nil {
+				mask = net.CIDRMask(128, 128)
+			}
+			cidr = &net.IPNet{
+				IP:   addr,
+				Mask: mask,
+			}
 		}
-		list = append(list, addr)
+		list = append(list, *cidr)
 	}
 	return &NeighborSet{
 		name: name,
@@ -703,25 +824,25 @@ func NewSingleAsPathMatch(arg string) *singleAsPathMatch {
 	onlyRe := regexp.MustCompile("^\\^([0-9]+)\\$$")
 	switch {
 	case leftMostRe.MatchString(arg):
-		asn, _ := strconv.Atoi(leftMostRe.FindStringSubmatch(arg)[1])
+		asn, _ := strconv.ParseUint(leftMostRe.FindStringSubmatch(arg)[1], 10, 32)
 		return &singleAsPathMatch{
 			asn:  uint32(asn),
 			mode: LEFT_MOST,
 		}
 	case originRe.MatchString(arg):
-		asn, _ := strconv.Atoi(originRe.FindStringSubmatch(arg)[1])
+		asn, _ := strconv.ParseUint(originRe.FindStringSubmatch(arg)[1], 10, 32)
 		return &singleAsPathMatch{
 			asn:  uint32(asn),
 			mode: ORIGIN,
 		}
 	case includeRe.MatchString(arg):
-		asn, _ := strconv.Atoi(includeRe.FindStringSubmatch(arg)[1])
+		asn, _ := strconv.ParseUint(includeRe.FindStringSubmatch(arg)[1], 10, 32)
 		return &singleAsPathMatch{
 			asn:  uint32(asn),
 			mode: INCLUDE,
 		}
 	case onlyRe.MatchString(arg):
-		asn, _ := strconv.Atoi(onlyRe.FindStringSubmatch(arg)[1])
+		asn, _ := strconv.ParseUint(onlyRe.FindStringSubmatch(arg)[1], 10, 32)
 		return &singleAsPathMatch{
 			asn:  uint32(asn),
 			mode: ONLY,
@@ -972,8 +1093,8 @@ func ParseCommunity(arg string) (uint32, error) {
 	exp := regexp.MustCompile("(\\d+):(\\d+)")
 	elems := exp.FindStringSubmatch(arg)
 	if len(elems) == 3 {
-		fst, _ := strconv.Atoi(elems[1])
-		snd, _ := strconv.Atoi(elems[2])
+		fst, _ := strconv.ParseUint(elems[1], 10, 16)
+		snd, _ := strconv.ParseUint(elems[2], 10, 16)
 		return uint32(fst<<16 | snd), nil
 	}
 	for i, v := range bgp.WellKnownCommunityNameMap {
@@ -1226,6 +1347,74 @@ type Condition interface {
 	Set() DefinedSet
 }
 
+type NextHopCondition struct {
+	set *NextHopSet
+}
+
+func (c *NextHopCondition) Type() ConditionType {
+	return CONDITION_NEXT_HOP
+}
+
+func (c *NextHopCondition) Set() DefinedSet {
+	return c.set
+}
+
+func (c *NextHopCondition) Name() string { return "" }
+
+func (c *NextHopCondition) String() string {
+	return c.set.String()
+}
+
+// compare next-hop ipaddress of this condition and source address of path
+// and, subsequent comparisons are skipped if that matches the conditions.
+// If NextHopSet's length is zero, return true.
+func (c *NextHopCondition) Evaluate(path *Path, options *PolicyOptions) bool {
+	if len(c.set.list) == 0 {
+		log.WithFields(log.Fields{
+			"Topic": "Policy",
+		}).Debug("NextHop doesn't have elements")
+		return true
+	}
+
+	nexthop := path.GetNexthop()
+
+	// In cases where we advertise routes from iBGP to eBGP, we want to filter
+	// on the "original" nexthop. The current paths' nexthop has already been
+	// set and is ready to be advertised as per:
+	// https://tools.ietf.org/html/rfc4271#section-5.1.3
+	if options != nil && options.OldNextHop != nil &&
+		!options.OldNextHop.IsUnspecified() && !options.OldNextHop.Equal(nexthop) {
+		nexthop = options.OldNextHop
+	}
+
+	if nexthop == nil {
+		return false
+	}
+
+	for _, n := range c.set.list {
+		if n.Contains(nexthop) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func NewNextHopCondition(c []string) (*NextHopCondition, error) {
+	if len(c) == 0 {
+		return nil, nil
+	}
+
+	list, err := NewNextHopSet(c)
+	if err != nil {
+		return nil, nil
+	}
+
+	return &NextHopCondition{
+		set: list,
+	}, nil
+}
+
 type PrefixCondition struct {
 	set    *PrefixSet
 	option MatchOption
@@ -1345,7 +1534,6 @@ func (c *NeighborCondition) Option() MatchOption {
 // and, subsequent comparisons are skipped if that matches the conditions.
 // If NeighborList's length is zero, return true.
 func (c *NeighborCondition) Evaluate(path *Path, options *PolicyOptions) bool {
-
 	if len(c.set.list) == 0 {
 		log.WithFields(log.Fields{
 			"Topic": "Policy",
@@ -1363,7 +1551,7 @@ func (c *NeighborCondition) Evaluate(path *Path, options *PolicyOptions) bool {
 	}
 	result := false
 	for _, n := range c.set.list {
-		if neighbor.Equal(n) {
+		if n.Contains(neighbor) {
 			result = true
 			break
 		}
@@ -1717,8 +1905,11 @@ func (c *RpkiValidationCondition) Type() ConditionType {
 	return CONDITION_RPKI
 }
 
-func (c *RpkiValidationCondition) Evaluate(path *Path, _ *PolicyOptions) bool {
-	return c.result == path.Validation()
+func (c *RpkiValidationCondition) Evaluate(path *Path, options *PolicyOptions) bool {
+	if options != nil && options.ValidationResult != nil {
+		return c.result == options.ValidationResult.Status
+	}
+	return false
 }
 
 func (c *RpkiValidationCondition) Set() DefinedSet {
@@ -1779,6 +1970,54 @@ func NewRouteTypeCondition(c config.RouteType) (*RouteTypeCondition, error) {
 	}
 	return &RouteTypeCondition{
 		typ: c,
+	}, nil
+}
+
+type AfiSafiInCondition struct {
+	afiSafiTypes []config.AfiSafiType
+}
+
+func (c *AfiSafiInCondition) Type() ConditionType {
+	return CONDITION_AFI_SAFI_IN
+}
+
+func (c *AfiSafiInCondition) Evaluate(path *Path, _ *PolicyOptions) bool {
+	for _, afiSafi := range c.afiSafiTypes {
+		if path.GetRouteFamily() == bgp.AddressFamilyValueMap[string(afiSafi)] {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *AfiSafiInCondition) Set() DefinedSet {
+	return nil
+}
+
+func (c *AfiSafiInCondition) Name() string { return "" }
+
+func (c *AfiSafiInCondition) String() string {
+	tmp := make([]string, 0, len(c.afiSafiTypes))
+	for _, afiSafi := range c.afiSafiTypes {
+		tmp = append(tmp, string(afiSafi))
+	}
+	return strings.Join(tmp, " ")
+}
+
+func NewAfiSafiInCondition(afiSafinConfig []config.AfiSafiType) (*AfiSafiInCondition, error) {
+	if afiSafinConfig == nil {
+		return nil, nil
+	}
+
+	afiSafis := make([]config.AfiSafiType, 0, len(afiSafinConfig))
+	for _, afiSafiValue := range afiSafinConfig {
+		if err := afiSafiValue.Validate(); err != nil {
+			return nil, err
+		}
+		afiSafis = append(afiSafis, afiSafiValue)
+	}
+	return &AfiSafiInCondition{
+		afiSafiTypes: afiSafis,
 	}, nil
 }
 
@@ -2275,7 +2514,7 @@ func (a *AsPathPrependAction) Type() ActionType {
 	return ACTION_AS_PATH_PREPEND
 }
 
-func (a *AsPathPrependAction) Apply(path *Path, _ *PolicyOptions) *Path {
+func (a *AsPathPrependAction) Apply(path *Path, option *PolicyOptions) *Path {
 	var asn uint32
 	if a.useLeftMost {
 		aspath := path.GetAsSeqList()
@@ -2298,7 +2537,8 @@ func (a *AsPathPrependAction) Apply(path *Path, _ *PolicyOptions) *Path {
 		asn = a.asn
 	}
 
-	path.PrependAsn(asn, a.repeat)
+	confed := option != nil && option.Info.Confederation
+	path.PrependAsn(asn, a.repeat, confed)
 
 	return path
 }
@@ -2469,12 +2709,22 @@ func (s *Statement) ToConfig() *config.Statement {
 				case *LargeCommunityCondition:
 					v := c.(*LargeCommunityCondition)
 					cond.BgpConditions.MatchLargeCommunitySet = config.MatchLargeCommunitySet{LargeCommunitySet: v.set.Name(), MatchSetOptions: config.IntToMatchSetOptionsTypeMap[int(v.option)]}
+				case *NextHopCondition:
+					v := c.(*NextHopCondition)
+					cond.BgpConditions.NextHopInList = v.set.List()
 				case *RpkiValidationCondition:
 					v := c.(*RpkiValidationCondition)
 					cond.BgpConditions.RpkiValidationResult = v.result
 				case *RouteTypeCondition:
 					v := c.(*RouteTypeCondition)
 					cond.BgpConditions.RouteType = v.typ
+				case *AfiSafiInCondition:
+					v := c.(*AfiSafiInCondition)
+					res := make([]config.AfiSafiType, 0, len(v.afiSafiTypes))
+					for _, afiSafi := range v.afiSafiTypes {
+						res = append(res, config.AfiSafiType(afiSafi))
+					}
+					cond.BgpConditions.AfiSafiInList = res
 				}
 			}
 			return cond
@@ -2673,6 +2923,12 @@ func NewStatement(c config.Statement) (*Statement, error) {
 		func() (Condition, error) {
 			return NewLargeCommunityCondition(c.Conditions.BgpConditions.MatchLargeCommunitySet)
 		},
+		func() (Condition, error) {
+			return NewNextHopCondition(c.Conditions.BgpConditions.NextHopInList)
+		},
+		func() (Condition, error) {
+			return NewAfiSafiInCondition(c.Conditions.BgpConditions.AfiSafiInList)
+		},
 	}
 	cs = make([]Condition, 0, len(cfs))
 	for _, f := range cfs {
@@ -2867,9 +3123,7 @@ func (r *RoutingPolicy) ApplyPolicy(id string, dir PolicyDirection, before *Path
 	if before == nil {
 		return nil
 	}
-	if filtered := before.Filtered(id); filtered > POLICY_DIRECTION_NONE && filtered < dir {
-		return nil
-	}
+
 	if before.IsWithdraw {
 		return before
 	}
@@ -3048,6 +3302,8 @@ func (r *RoutingPolicy) validateCondition(v Condition) (err error) {
 			c := v.(*LargeCommunityCondition)
 			c.set = i.(*LargeCommunitySet)
 		}
+	case CONDITION_NEXT_HOP:
+	case CONDITION_AFI_SAFI_IN:
 	case CONDITION_AS_PATH_LENGTH:
 	case CONDITION_RPKI:
 	}
@@ -3059,7 +3315,7 @@ func (r *RoutingPolicy) inUse(d DefinedSet) bool {
 	for _, p := range r.policyMap {
 		for _, s := range p.Statements {
 			for _, c := range s.Conditions {
-				if c.Set().Name() == name {
+				if c.Set() != nil && c.Set().Name() == name {
 					return true
 				}
 			}
@@ -3157,6 +3413,7 @@ func (r *RoutingPolicy) reload(c config.RoutingPolicy) error {
 		}
 		dmap[DEFINED_TYPE_LARGE_COMMUNITY][y.Name()] = y
 	}
+
 	pmap := make(map[string]*Policy)
 	smap := make(map[string]*Statement)
 	for _, x := range c.PolicyDefinitions {
@@ -3499,9 +3756,10 @@ func (r *RoutingPolicy) ReplacePolicy(x *Policy, refer, preserve bool) (err erro
 		}
 	}
 
+	ys := y.Statements
 	err = y.Replace(x)
 	if err == nil && !preserve {
-		for _, st := range y.Statements {
+		for _, st := range ys {
 			if !r.statementInUse(st) {
 				log.WithFields(log.Fields{
 					"Topic": "Policy",
