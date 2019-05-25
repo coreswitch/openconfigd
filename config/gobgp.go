@@ -207,6 +207,10 @@ func GobgpClearVrfRib(c *VrfConfig) error {
 }
 
 func GobgpAddVrf(client *client.Client, c *VrfConfig) error {
+	if c.Name == "" {
+		c.Name = fmt.Sprintf("vrf%d", c.VrfId)
+	}
+
 	fmt.Println("GobgpAddVrf", c.Name, "ribs num", len(c.VrfRibs))
 	rd, err := bgp.ParseRouteDistinguisher(c.Rd)
 	if err != nil {
@@ -891,6 +895,7 @@ func GobgpVrfRibSync(name string, old, new []VrfRib) {
 
 func GobgpVrfUpdate(vrfConfig VrfConfig) {
 	fmt.Println("GobgpVrfUpdate Start")
+
 	var cfg GobgpConfig
 
 	cfg = gobgpConfig

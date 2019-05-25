@@ -59,7 +59,7 @@ var (
 
 	// Last etcd value as JSON.
 	etcdLastJson    JsonBody
-	etcdLastVrfJson JsonBody
+	etcdLastVrfJson string
 	etcdBgpWanJson  JsonBody
 
 	// Value map.
@@ -406,7 +406,7 @@ func EtcdKeyValueParse(key, value []byte, get bool) {
 			GobgpParse(string(value))
 		}
 	case "vrf":
-		etcdLastVrfJson = *jsonBody
+		etcdLastVrfJson = string(value)
 		vrfId := 0
 		if len(path) > 1 {
 			vrfId, _ = strconv.Atoi(path[1])
@@ -414,7 +414,7 @@ func EtcdKeyValueParse(key, value []byte, get bool) {
 		if vrfId == 0 {
 			return
 		}
-		VrfParse(vrfId, jsonBody.Body)
+		VrfParse(vrfId, string(value))
 	case "bgp_wan":
 		etcdBgpWanJson = *jsonBody
 		GobgpWanParse(jsonBody.Body, local)
@@ -564,13 +564,13 @@ func configureEtcdVersionFunc(Args []string) (inst int, instStr string) {
 
 func configureEtcdBodyFunc2(Args []string) (inst int, instStr string) {
 	inst = CliSuccessShow
-	instStr = etcdLastVrfJson.Body
+	instStr = etcdLastVrfJson
 	return
 }
 
 func configureEtcdVersionFunc2(Args []string) (inst int, instStr string) {
 	inst = CliSuccessShow
-	instStr = strconv.Itoa(etcdLastVrfJson.Version)
+	instStr = strconv.Itoa(etcdLastJson.Version)
 	return
 }
 
