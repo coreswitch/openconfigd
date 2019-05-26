@@ -822,10 +822,10 @@ func (this *YangComponent) Start() component.Component {
 	SubscribeLocalAdd([]string{"interfaces", "interface", "*", "dhcp-relay-group"}, nil)
 
 	// ReadOnlyConfig
-	ent := EntryLookup(rootEntry, []string{"interfaces", "interface", "name"})
-	if ent != nil {
-		ent.ReadOnlyConfig = true
-	}
+	// ent := EntryLookup(rootEntry, []string{"interfaces", "interface", "name"})
+	// if ent != nil {
+	// 	ent.ReadOnlyConfig = true
+	// }
 
 	return this
 }
