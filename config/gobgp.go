@@ -184,6 +184,10 @@ func GobgpStaticPath(s *Route) (*table.Path, error) {
 }
 
 func GobgpClearVrfRib(c *VrfConfig) error {
+	if c.Name == "" {
+		c.Name = fmt.Sprintf("vrf%d", c.VrfId)
+	}
+
 	client, err := client.New("")
 	if err != nil {
 		log.WithFields(log.Fields{
@@ -928,7 +932,7 @@ func GobgpVrfDelete(vrfId int) {
 	for _, vrf := range gobgpConfig.Vrfs {
 		if vrf.VrfId == vrfId {
 			fmt.Println("GobgpVrfDelete: removing vrf", vrfId)
-			//GobgpClearVrfRib(&vrf)
+			GobgpClearVrfRib(&vrf)
 		} else {
 			cfg.Vrfs = append(cfg.Vrfs, vrf)
 		}
