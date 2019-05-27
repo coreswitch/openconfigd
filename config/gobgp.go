@@ -236,7 +236,7 @@ func GobgpAddVrf(client *client.Client, c *VrfConfig) error {
 	err = client.AddVRF(c.Name, c.VrfId, rd, importRt, exportRt)
 	if err != nil {
 		fmt.Println("GobgpAddVrf AddVRF:", err)
-		return err
+		//return err
 	}
 
 	for _, r := range c.VrfRibs {
