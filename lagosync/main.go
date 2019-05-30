@@ -17,9 +17,9 @@ type RIB struct {
 var ribMap = map[string]*RIB{}
 
 var nh2tunnelMap = map[string]string{
-	"192.168.30.11": "tif0-0",
-	"192.168.30.12": "tif1-0",
-	"192.168.30.13": "tif2-0",
+	"192.168.30.11": "tif1-0",
+	"192.168.30.12": "tif2-0",
+	"192.168.30.13": "tif3-0",
 }
 
 func Dump() {
