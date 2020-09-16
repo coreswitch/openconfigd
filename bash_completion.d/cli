@@ -30,7 +30,7 @@ _cli_interactive_setup ()
 _cli_interactive_setup
 
 if [[ $interactive ]]; then
-  if [ ! `basename "/$0"` = "cli" ];then
+  if [ ! `basename "/$0"` = "-cli" -a ! `basename "/$0"` = "cli" ];then
    return 0
   fi
 fi
