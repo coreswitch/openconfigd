@@ -215,7 +215,6 @@ type YMatchState struct {
 	trailing bool
 	index    int
 	config   *Config
-	first    bool
 }
 
 const (
@@ -751,7 +750,7 @@ func ParseDelete(cmds []string, config *Config, s *YMatchState) (int, cmd.Callba
 
 	cmds = cmds[1:]
 	if len(cmds) == 0 {
-		if s.complete && s.trailing && !s.first {
+		if s.complete && s.trailing {
 			s.comps = s.comps[:0]
 			if config.HasDir() {
 				s.comps = CompConfig(config, s.comps)
@@ -785,19 +784,17 @@ func YParseDelete(param *cmd.Param) (int, cmd.Callback, []interface{}, cmd.CompS
 	SubscribeMutex.Lock()
 	defer SubscribeMutex.Unlock()
 
-	status := &YMatchState{
-		state:    StateDir,
-		complete: param.Complete,
-		trailing: param.TrailingSpace,
-	}
-
 	// Trim "delete"
 	if len(param.Command) > 0 {
 		param.Command = param.Command[1:]
 	}
 	if len(param.Command) == 0 {
 		param.Command = []string{""}
-		status.first = true
+	}
+	status := &YMatchState{
+		state:    StateDir,
+		complete: param.Complete,
+		trailing: param.TrailingSpace,
 	}
 	return ParseDelete(param.Command, configCandidate, status)
 }
