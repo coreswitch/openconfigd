@@ -1,0 +1,13 @@
+module coreswitch {
+  yang-version "1";
+
+  namespace "http://free5gc.org/";
+  prefix "free5gc";
+
+  import ietf-inet-types {
+    prefix inet;
+  }
+
+  container free5gc {
+  }
+}
