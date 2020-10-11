@@ -8,7 +8,7 @@ OPENCONFIGD_VERSION:=0.8.1
 PACKAGE_VERSION:=$(OPENCONFIGD_VERSION)
 PACKAGE_LICENSE:=Apache License version 2.0
 PACKAGE_DESCRIPTION:=OpenConfigd
-PACKAGE_MAINTAINER:=ishi@coreswitch.io
+PACKAGE_MAINTAINER:=kunihiro@zebra.dev
 PACKAGE_URL:=http://coreswitch.io/
 PACKAGE_VENDOR:=coreswitch
 
