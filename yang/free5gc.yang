@@ -10,4 +10,27 @@ module coreswitch {
 
   container free5gc {
   }
+
+  container system {
+    description
+      "System group configuration.";
+
+    leaf hostname {
+      type inet:domain-name;
+      description
+        "The name of the host.  This name can be a single domain
+        label or the fully qualified domain name of the host.";
+    }
+    container etcd {
+      list endpoints {
+        key "url";
+        leaf url {
+          type string;
+        }
+      }
+      leaf path {
+        type string;
+      }
+    }
+  }
 }
