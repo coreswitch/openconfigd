@@ -52,10 +52,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Arguments are YANG module names. When no modules is specified "coreswitch"
+	// Arguments are YANG module names. When no modules is specified "free5gc"
 	// is set as default YANG module name.
 	if len(args) == 0 {
-		args = []string{"coreswitch"}
+		args = []string{"free5gc"}
 	}
 
 	// Set log output.
