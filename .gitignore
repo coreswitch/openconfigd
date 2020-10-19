@@ -36,4 +36,7 @@
 .libs/
 
 # Debian package
-debian/out/
+package/out/
+
+# IDE files
+.idea/
