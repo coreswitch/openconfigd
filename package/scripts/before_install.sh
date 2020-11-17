@@ -3,7 +3,7 @@
 _process_ubuntu ()
 {
     echo "Pre install script for Ubuntu"
-    /usr/bin/supervisorctl stop openconfigd
+    /bin/systemctl stop openconfigd.service
     return 0
 }
 
