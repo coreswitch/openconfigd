@@ -97,7 +97,10 @@ func execute(Cmd *cmd.Cmd, mode string, args []string, line string, reply *rpc.E
 				} else {
 					reply.Code = rpc.ExecCode_REDIRECT
 				}
-				port, _ := strconv.ParseUint(instStr, 10, 32)
+				pair := strings.Split(instStr, ":")
+				host := pair[0]
+				port, _ := strconv.ParseUint(pair[1], 10, 32)
+				reply.Host = host
 				reply.Port = uint32(port)
 				ret = "SuccessRedirect\n"
 				ret += instStr
@@ -193,12 +196,7 @@ func (s *openconfigServer) DoExec(_ context.Context, req *rpc.ExecRequest) (*rpc
 
 func (s *registerServer) DoRegister(_ context.Context, req *rpc.RegisterRequest) (*rpc.RegisterReply, error) {
 	reply := new(rpc.RegisterReply)
-	port := GrpcModuleMap[req.Module]
-	if port == "" {
-		port = "2601"
-	} else {
-		//fmt.Println("Set port", port)
-	}
+	host := GrpcModuleMap[req.Module]
 
 	inst := CliSuccessRedirect
 	if req.Code == rpc.ExecCode_REDIRECT_SHOW {
@@ -208,7 +206,7 @@ func (s *registerServer) DoRegister(_ context.Context, req *rpc.RegisterRequest)
 	if mode := s.cmd.LookupMode(req.Mode); mode != nil {
 		mode.InstallLine(req.Line,
 			func(Args []string) (int, string) {
-				return inst, port
+				return inst, host
 			},
 			&cmd.Param{Helps: req.Helps, Privilege: req.Privilege, Dynamic: true})
 	}
@@ -217,7 +215,12 @@ func (s *registerServer) DoRegister(_ context.Context, req *rpc.RegisterRequest)
 
 func (s *registerServer) DoRegisterModule(_ context.Context, req *rpc.RegisterModuleRequest) (*rpc.RegisterModuleReply, error) {
 	reply := new(rpc.RegisterModuleReply)
-	GrpcModuleMap[req.Module] = req.Port
+	host := req.Host
+	port := req.Port
+	if port == "" {
+		port = "2601"
+	}
+	GrpcModuleMap[req.Module] = fmt.Sprintf("%s:%s", host, port)
 	return reply, nil
 }
 
@@ -282,12 +285,13 @@ func DynamicCompletion(commands []string, module string, args []string) []string
 	// }
 
 	// XXX Need to leverage stream connection. (No need of make a new connection)
-	host := ":2601" // Default port.
+	host := SubscribeHostLookup(module)
 	port := SubscribePortLookup(module)
-	if port != 0 {
-		host = fmt.Sprintf(":%d", port)
+	if port == 0 {
+		port = 2601 // default port
 	}
-	conn, err := grpc.Dial(host, grpc.WithInsecure())
+	url := fmt.Sprintf("%s:%d", host, port)
+	conn, err := grpc.Dial(url, grpc.WithInsecure())
 	if err != nil {
 		fmt.Println("DynamicCompletion: Fail to dial", err)
 		return []string{}
