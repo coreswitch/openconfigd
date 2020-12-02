@@ -47,8 +47,8 @@ func privilegeGet() (priv uint32) {
 	return
 }
 
-func show(port int, json bool) {
-	conn, err := grpc.Dial(fmt.Sprintf(":%d", port), grpc.WithInsecure())
+func show(host string, port int, json bool) {
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", host, port), grpc.WithInsecure())
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -95,8 +95,8 @@ func output(reply *rpc.ExecReply) {
 	fmt.Println(reply.Lines)
 }
 
-func redirect(req *rpc.ExecRequest, port uint32) {
-	conn, err := grpc.Dial(fmt.Sprintf(":%d", port), grpc.WithInsecure())
+func redirect(req *rpc.ExecRequest, host string, port uint32) {
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", host, port), grpc.WithInsecure())
 	if err != nil {
 		fmt.Println("Fail to dial:", err)
 		return
@@ -134,9 +134,9 @@ func exec(conn *grpc.ClientConn, modeFlag string, jsonFlag bool) {
 
 	switch reply.Code {
 	case rpc.ExecCode_REDIRECT:
-		redirect(req, reply.Port)
+		redirect(req, reply.Host,reply.Port)
 	case rpc.ExecCode_REDIRECT_SHOW:
-		show(int(reply.Port), jsonFlag)
+		show(reply.Host, int(reply.Port), jsonFlag)
 	default:
 		output(reply)
 	}
@@ -174,6 +174,7 @@ func main() {
 		firstFlag bool
 		modeFlag  string
 		showFlag  bool
+		hostFlag  string
 		portFlag  int
 		jsonFlag  bool
 	)
@@ -182,12 +183,13 @@ func main() {
 	flag.BoolVar(&trailFlag, "t", false, "Command has trailing space")
 	flag.StringVar(&modeFlag, "m", "exec", "Current mode")
 	flag.BoolVar(&showFlag, "s", false, "Show command flag")
+	flag.StringVar(&hostFlag, "h", "", "Host address")
 	flag.IntVar(&portFlag, "p", 2650, "Show command port")
 	flag.BoolVar(&jsonFlag, "j", false, "Show output in JSON format")
 	flag.Parse()
 
 	// Connect to service.
-	conn, err := grpc.Dial(fmt.Sprintf(":%d", portFlag), grpc.WithInsecure())
+	conn, err := grpc.Dial(fmt.Sprintf("%s:%d", hostFlag, portFlag), grpc.WithInsecure())
 	if err != nil {
 		fmt.Println("Fail to dial:", err)
 		return
@@ -197,7 +199,7 @@ func main() {
 	// Figure out which gRPC service to use.
 	switch {
 	case showFlag:
-		show(portFlag, jsonFlag)
+		show(hostFlag, portFlag, jsonFlag)
 	case compFlag || trailFlag || firstFlag:
 		completion(conn, compFlag, trailFlag, firstFlag, modeFlag)
 	default:

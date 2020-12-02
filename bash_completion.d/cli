@@ -37,6 +37,9 @@ fi
 
 # CLI command tool name.
 cli_command=cli_command
+if [[ ${CLI_REMOTE} ]]; then
+  remote_opt=-h=${CLI_REMOTE}
+fi
 
 declare -x CLI_STYLE=juniper
 declare -x CLI_MODE="exec"
@@ -163,9 +166,9 @@ _cli_set_completions ()
   OIFS=${IFS}
 
   if [[ -z "$current" ]];then
-    IFS='' input=$(${cli_command} -t -m ${CLI_MODE} ${COMP_WORDS[*]})
+    IFS='' input=$(${cli_command} ${remote_opt} -t -m ${CLI_MODE} ${COMP_WORDS[*]})
   else
-    IFS='' input=$(${cli_command} -c -m ${CLI_MODE} ${COMP_WORDS[*]})
+    IFS='' input=$(${cli_command} ${remote_opt} -c -m ${CLI_MODE} ${COMP_WORDS[*]})
   fi
   declare -i first=1
   while read line; do
@@ -249,7 +252,7 @@ _cli_exec ()
   fi
 
   OIFS=${IFS}
-  IFS='' input=$(${cli_command} ${JSON_FLAG} -m ${CLI_MODE} $@)
+  IFS='' input=$(${cli_command} ${remote_opt} ${JSON_FLAG} -m ${CLI_MODE} $@)
   while read line; do
     if [[ ${first} -eq 1 ]];then
       result=${line}
@@ -288,7 +291,7 @@ _cli_register_first_level_command ()
   shopt -s expand_aliases
   unalias -a
   OOIFS=${IFS}
-  IFS=''  input=$(${cli_command} -f -m ${CLI_MODE})
+  IFS=''  input=$(${cli_command} ${remote_opt} -f -m ${CLI_MODE})
   while read cmd; do
     IFS='' seq_input=$(seq 1 ${#cmd})
     while read pos; do
