@@ -62,8 +62,9 @@ enum ExecCode {
 message ExecReply {
 	ExecCode code = 1;
 	string lines = 2;
-	uint32 port = 3;
-	repeated string candidates = 4;
+	string host = 3;
+	uint32 port = 4;
+	repeated string candidates = 5;
 }
 
 // The Command register.
@@ -91,7 +92,8 @@ message RegisterReply {
 // The request message mode information.
 message RegisterModuleRequest {
 	string module = 1;
-	string port = 2;
+	string host = 2;
+	string port = 3;
 }
 
 // The response message containing the callbackID for the mode change.
@@ -152,10 +154,11 @@ message SubscribeRequest {
 message ConfigRequest {
 	ConfigType type = 1;
 	string module = 2;
-	uint32 port = 3;
-	SubscribeType subtype = 4;
-	repeated string path = 5;
-	repeated SubscribeRequest subscribe = 6;
+	string host = 3;
+	uint32 port = 4;
+	SubscribeType subtype = 5;
+	repeated string path = 6;
+	repeated SubscribeRequest subscribe = 7;
 }
 
 message ConfigReply {

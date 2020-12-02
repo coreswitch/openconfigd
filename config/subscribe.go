@@ -194,6 +194,7 @@ type Subscriber struct {
 	Type    int
 	Module  string
 	Port    uint32
+	Host    string
 	stream  rpc.Config_DoConfigServer
 	done    chan rpc.ConfigType
 	SubPath []SubPath
@@ -492,6 +493,15 @@ func SubscribePortLookup(name string) uint32 {
 	return 0
 }
 
+func SubscribeHostLookup(name string) string {
+	for _, sub := range SubscribeMap {
+		if sub.Module == name {
+			return sub.Host
+		}
+	}
+	return ""
+}
+
 func NewPath(name string, parent *Path) *Path {
 	return &Path{Name: name, Parent: parent, Map: PathMap{}}
 }
@@ -564,7 +574,7 @@ func SubscribeRemoteAdd(stream rpc.Config_DoConfigServer, req *rpc.ConfigRequest
 
 	sub := SubscribeLookup(stream)
 	if sub == nil {
-		sub = &Subscriber{Module: req.Module, Port: req.Port, stream: stream}
+		sub = &Subscriber{Module: req.Module, Host: req.Host, Port: req.Port, stream: stream}
 		SubscribeMap[sub] = sub
 	}
 
@@ -606,7 +616,7 @@ func SubscribeAdd(stream rpc.Config_DoConfigServer, req *rpc.ConfigRequest) {
 
 	sub := SubscribeLookup(stream)
 	if sub == nil {
-		sub = &Subscriber{Module: req.Module, Port: req.Port, stream: stream}
+		sub = &Subscriber{Module: req.Module, Host: req.Host, Port: req.Port, stream: stream}
 		SubscribeMap[sub] = sub
 	}
 
@@ -657,7 +667,7 @@ func SubscribeRemoteAddMulti(stream rpc.Config_DoConfigServer, req *rpc.ConfigRe
 
 	sub := SubscribeLookup(stream)
 	if sub == nil {
-		sub = &Subscriber{Module: req.Module, Port: req.Port, stream: stream}
+		sub = &Subscriber{Module: req.Module, Host: req.Host, Port: req.Port, stream: stream}
 		SubscribeMap[sub] = sub
 	}
 
