@@ -23,7 +23,7 @@
 
 [[constraint]]
   name = "github.com/coreos/etcd"
-  version = "=3.2.15"
+  version = "v3.2.15"
 
 [[constraint]]
   name = "github.com/coreswitch/cmd"
@@ -63,7 +63,7 @@
 
 [[constraint]]
   name = "github.com/osrg/gobgp"
-  source = "git@github.com:hash-set/gobgp.1.27.git"
+  source = "https://github.com/hash-set/gobgp.1.27"
   branch = "master"
 
 [[constraint]]
@@ -80,4 +80,4 @@
 
 [[constraint]]
   name = "google.golang.org/grpc"
-  version = "=1.7.5"
+  version = "v1.7.5"
