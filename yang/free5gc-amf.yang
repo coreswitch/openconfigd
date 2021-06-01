@@ -3,6 +3,14 @@ module free5gc-amf {
 
   prefix "free5gc-amf";
 
+  import ietf-inet-types {
+    prefix inet;
+  }
+
+  import free5gc-types {
+    prefix free5gc;
+  }
+
   grouping amf {
     leaf name {
       type string;
@@ -270,15 +278,7 @@ module free5gc-amf {
       }
       container nas {
         leaf debug-level {
-          type enumeration {
-            enum trace;
-            enum debug;
-            enum info;
-            enum warn;
-            enum error;
-            enum fatal;
-            enum panic;
-          }
+          type free5gc:debug-level;
         }
         leaf report-caller {
           type boolean;
@@ -286,15 +286,7 @@ module free5gc-amf {
       }
       container fsm {
         leaf debug-level {
-          type enumeration {
-            enum trace;
-            enum debug;
-            enum info;
-            enum warn;
-            enum error;
-            enum fatal;
-            enum panic;
-          }
+          type free5gc:debug-level;
         }
         leaf report-caller {
           type boolean;
@@ -302,15 +294,7 @@ module free5gc-amf {
       }
       container ngap {
         leaf debug-level {
-          type enumeration {
-            enum trace;
-            enum debug;
-            enum info;
-            enum warn;
-            enum error;
-            enum fatal;
-            enum panic;
-          }
+          type free5gc:debug-level;
         }
         leaf report-caller {
           type boolean;
@@ -318,15 +302,7 @@ module free5gc-amf {
       }
       container aper {
         leaf debug-level {
-          type enumeration {
-            enum trace;
-            enum debug;
-            enum info;
-            enum warn;
-            enum error;
-            enum fatal;
-            enum panic;
-          }
+          type free5gc:debug-level;
         }
         leaf report-caller {
           type boolean;
@@ -334,15 +310,7 @@ module free5gc-amf {
       }
       container path-util {
         leaf debug-level {
-          type enumeration {
-            enum trace;
-            enum debug;
-            enum info;
-            enum warn;
-            enum error;
-            enum fatal;
-            enum panic;
-          }
+          type free5gc:debug-level;
         }
         leaf report-caller {
           type boolean;
@@ -350,15 +318,7 @@ module free5gc-amf {
       }
       container openapi {
         leaf debug-level {
-          type enumeration {
-            enum trace;
-            enum debug;
-            enum info;
-            enum warn;
-            enum error;
-            enum fatal;
-            enum panic;
-          }
+          type free5gc:debug-level;
         }
         leaf report-caller {
           type boolean;

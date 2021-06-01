@@ -1,0 +1,17 @@
+module free5gc-types {
+  namespace "http://free5gc.org/yang/free5gc-types";
+
+  prefix "free5gc-types";
+
+  typedef debug-level {
+    type enumeration {
+      enum trace;
+      enum debug;
+      enum info;
+      enum warn;
+      enum error;
+      enum fatal;
+      enum panic;
+    }
+  }
+}
