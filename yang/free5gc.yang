@@ -12,8 +12,16 @@ module free5gc {
     prefix amf;
   }
 
+  import free5gc-smf {
+    prefix smf;
+  }
+
   container amf {
     uses "amf:amf";
+  }
+
+  container smf {
+    uses "smf:smf";
   }
 
   container system {

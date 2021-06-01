@@ -1,0 +1,329 @@
+module free5gc-smf {
+  namespace "http://free5gc.org/yang/free5gc-smf";
+
+  prefix "free5gc-smf";
+
+  import ietf-inet-types {
+    prefix inet;
+  }
+
+  import free5gc-types {
+    prefix free5gc;
+  }
+
+  grouping smf {
+    leaf name {
+      type string;
+    }
+    list ngap-ip-list {
+      key "address";
+      leaf address {
+        type inet:ipv4-address;
+      }
+    }
+    container sbi {
+      leaf scheme {
+        type enumeration {
+          enum http;
+          enum https;
+        }
+      }
+      leaf register-ipv4 {
+        type inet:ipv4-address;
+      }
+      leaf binding-ipv4 {
+        type inet:ipv4-address;
+      }
+      leaf port {
+        type uint16;
+      }
+    }
+    list service-name-list {
+      key "service-name";
+      leaf service-name {
+        type enumeration {
+          enum namf-comm;
+          enum namf-evts;
+          enum namf-mt;
+          enum namf-loc;
+          enum namf-oam;
+        }
+      }
+    }
+    list served-guami-list {
+      key "name";
+      leaf name {
+        type string;
+      }
+      container plmnid {
+        leaf mcc {
+          type string {
+            pattern '[0-9]{3}';
+          }
+        }
+        leaf mnc {
+          type string {
+            pattern '[0-9]{2,3}';
+          }
+        }
+      }
+      leaf amfid {
+        type string;
+      }
+    }
+    list support-tai-list {
+      key "name";
+      leaf name {
+        type string;
+      }
+      container plmnid {
+        leaf mcc {
+          type string {
+            pattern '[0-9]{3}';
+          }
+        }
+        leaf mnc {
+          type string {
+            pattern '[0-9]{2,3}';
+          }
+        }
+      }
+      leaf tac {
+        type uint32;
+      }
+    }
+    list plmn-support-list {
+      key "name";
+      leaf name {
+        type string;
+      }
+      container plmnid {
+        leaf mcc {
+          type string {
+            pattern '[0-9]{3}';
+          }
+        }
+        leaf mnc {
+          type string {
+            pattern '[0-9]{2,3}';
+          }
+        }
+      }
+      list snssai-list {
+        key "name";
+        leaf name {
+          type string;
+        }
+        leaf sst {
+          type uint8;
+        }
+        leaf sd {
+          type string {
+            pattern '[0-9]{6}';
+          }
+        }
+      }
+    }
+    list support-dnn-list {
+      key "name";
+      leaf name {
+        type string;
+      }
+    }
+    leaf nrf-uri {
+      type string;
+    }
+    container security {
+      leaf-list integrity-order {
+        type enumeration {
+          enum NIA2;
+          enum NIA0;
+        }
+      }
+      leaf-list ciphering-order {
+        type enumeration {
+          enum NIA2;
+          enum NIA0;
+        }
+      }
+    }
+    container network-name {
+      leaf full {
+        type string;
+      }
+      leaf short {
+        type string;
+      }
+    }
+    container network-feature-support-5gs {
+      leaf enable {
+        type boolean;
+      }
+      leaf ims-vops {
+        type uint8 {
+            range 0..1;
+        }
+      }
+      leaf emc {
+        type uint8 {
+            range 0..3;
+        }
+      }
+      leaf emf {
+        type uint8 {
+            range 0..3;
+        }
+      }
+      leaf iwk-n26 {
+        type uint8 {
+            range 0..1;
+        }
+      }
+      leaf mpsi {
+        type uint8 {
+            range 0..1;
+        }
+      }
+      leaf emc-n3 {
+        type uint8 {
+            range 0..1;
+        }
+      }
+      leaf mcsi {
+        type uint8 {
+            range 0..1;
+        }
+      }
+    }
+    leaf t3502-value {
+      type uint32;
+    }
+    leaf t3512-value {
+      type uint32;
+    }
+    leaf non3gpp-deregistration-timer-value {
+      type uint32;
+    }
+    container t3513 {
+      leaf enable {
+        type boolean;
+      }
+      leaf expire-time {
+        type uint32;
+      }
+      leaf max-retry-times {
+        type uint32;
+      }
+    }
+    container t3522 {
+      leaf enable {
+        type boolean;
+      }
+      leaf expire-time {
+        type uint32;
+      }
+      leaf max-retry-times {
+        type uint32;
+      }
+    }
+    container t3550 {
+      leaf enable {
+        type boolean;
+      }
+      leaf expire-time {
+        type uint32;
+      }
+      leaf max-retry-times {
+        type uint32;
+      }
+    }
+    container t3560 {
+      leaf enable {
+        type boolean;
+      }
+      leaf expire-time {
+        type uint32;
+      }
+      leaf max-retry-times {
+        type uint32;
+      }
+    }
+    container t3565 {
+      leaf enable {
+        type boolean;
+      }
+      leaf expire-time {
+        type uint32;
+      }
+      leaf max-retry-times {
+        type uint32;
+      }
+    }
+    container logger {
+      container amf {
+        leaf debug-level {
+          type enumeration {
+            enum trace;
+            enum debug;
+            enum info;
+            enum warn;
+            enum error;
+            enum fatal;
+            enum panic;
+          }
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container nas {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container fsm {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container ngap {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container aper {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container path-util {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container openapi {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+    }
+  }
+}
