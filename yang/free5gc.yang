@@ -1,4 +1,4 @@
-module coreswitch {
+module free5gc {
   yang-version "1";
 
   namespace "https://free5gc.org/";
@@ -8,134 +8,12 @@ module coreswitch {
     prefix inet;
   }
 
+  import free5gc-amf {
+    prefix amf;
+  }
+
   container amf {
-    leaf name {
-      type string;
-    }
-    list ngap-ip-list {
-      key "address";
-      leaf address {
-        type inet:ipv4-address;
-      }
-    }
-    container sbi {
-      leaf scheme {
-        type enumeration {
-          enum http;
-          enum https;
-        }
-      }
-      leaf register-ipv4 {
-        type inet:ipv4-address;
-      }
-      leaf binding-ipv4 {
-        type inet:ipv4-address;
-      }
-      leaf port {
-        type uint16;
-      }
-    }
-    list service-name-list {
-      key "service-name";
-      leaf service-name {
-        type enumeration {
-          enum namf-comm;
-          enum namf-evts;
-          enum namf-mt;
-          enum namf-loc;
-          enum namf-oam;
-        }
-      }
-    }
-    list served-guami-list {
-      key "name";
-      leaf name {
-        type string;
-      }
-      container plmnid {
-        leaf mcc {
-          type string {
-            pattern '[0-9]{3}';
-          }
-        }
-        leaf mnc {
-          type string {
-            pattern '[0-9]{2,3}';
-          }
-        }
-      }
-      leaf amfid {
-        type string;
-      }
-    }
-    list support-tai-list {
-      key "name";
-      leaf name {
-        type string;
-      }
-      container plmnid {
-        leaf mcc {
-          type string {
-            pattern '[0-9]{3}';
-          }
-        }
-        leaf mnc {
-          type string {
-            pattern '[0-9]{2,3}';
-          }
-        }
-      }
-      leaf tac {
-        type uint32;
-      }
-    }
-
-    list plmn-support-list {
-      key "name";
-      leaf name {
-        type string;
-      }
-      container plmnid {
-        leaf mcc {
-          type string {
-            pattern '[0-9]{3}';
-          }
-        }
-        leaf mnc {
-          type string {
-            pattern '[0-9]{2,3}';
-          }
-        }
-      }
-      list snssai-list {
-        key "name";
-        leaf name {
-          type string;
-        }
-        leaf sst {
-          type uint8;
-        }
-        leaf sd {
-          type string {
-            pattern '[0-9]{5}';
-          }
-        }
-      }
-    }
-    
-    list support-dnn-list {
-      key "name";
-      leaf name {
-        type string;
-      }
-    }
-    
-    leaf nrf-uri {
-      type string;
-    }
-
-    container security {
-    }
+    uses "amf:amf";
   }
 
   container system {
