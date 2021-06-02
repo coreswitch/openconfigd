@@ -1,0 +1,102 @@
+module free5gc-ausf {
+  namespace "http://free5gc.org/yang/free5gc-ausf";
+
+  prefix "free5gc-ausf";
+
+  import ietf-inet-types {
+    prefix inet;
+  }
+
+  import free5gc-types {
+    prefix free5gc;
+  }
+
+  grouping ausf {
+    leaf name {
+      type string;
+    }
+    container sbi {
+      leaf scheme {
+        type enumeration {
+          enum http;
+          enum https;
+        }
+      }
+      leaf register-ipv4 {
+        type inet:ipv4-address;
+      }
+      leaf binding-ipv4 {
+        type inet:ipv4-address;
+      }
+      leaf port {
+        type uint16;
+      }
+      container tls {
+        leaf key {
+          type string;
+        }
+        leaf pem {
+          type string;
+        }
+      }
+    }
+    list service-name-list {
+      key "service-name";
+      leaf service-name {
+        type enumeration {
+          enum nausf-auth;
+        }
+      }
+    }
+    list plmn-support-list {
+      key "name";
+      leaf name {
+        type string;
+      }
+      container plmnid {
+        leaf mcc {
+          type string {
+            pattern '[0-9]{3}';
+          }
+        }
+        leaf mnc {
+          type string {
+            pattern '[0-9]{2,3}';
+          }
+        }
+      }
+    }
+    leaf nrf-uri {
+      type string;
+    }
+    leaf groupid {
+      type string;
+    }
+    container logger {
+      container ausf {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container path-util {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container openapi {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+    }
+  }
+}

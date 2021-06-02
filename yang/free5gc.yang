@@ -16,12 +16,20 @@ module free5gc {
     prefix smf;
   }
 
+  import free5gc-ausf {
+    prefix ausf;
+  }
+
   container amf {
     uses "amf:amf";
   }
 
   container smf {
     uses "smf:smf";
+  }
+
+  container ausf {
+    uses "ausf:ausf";
   }
 
   container system {
