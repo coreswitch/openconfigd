@@ -119,8 +119,8 @@ module free5gc-nssf {
           type string;
         }
         leaf nsiid {
-          type uint32
-            }
+          type uint32;
+        }
       }
     }
     list amf-set-list {
@@ -140,7 +140,7 @@ module free5gc-nssf {
       leaf nrf-amf-set {
         type string;
       }
-      list supported-nssai-data {
+      list supported-nssai-availability-data {
         key "tai";
         leaf tai {
           type string;
@@ -184,7 +184,7 @@ module free5gc-nssf {
       leaf nfid {
         type string;
       }
-      list supported-nssai-data {
+      list supported-nssai-availability-data {
         key "tai";
         leaf tai {
           type string;
