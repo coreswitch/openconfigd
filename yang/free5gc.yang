@@ -20,6 +20,10 @@ module free5gc {
     prefix nrf;
   }
 
+  import free5gc-udm {
+    prefix udm;
+  }
+
   import free5gc-ausf {
     prefix ausf;
   }
@@ -34,6 +38,10 @@ module free5gc {
 
   container nrf {
     uses "nrf:nrf";
+  }
+
+  container udm {
+    uses "udm:udm";
   }
 
   container ausf {

@@ -1,0 +1,99 @@
+module free5gc-udm {
+  namespace "http://free5gc.org/yang/free5gc-udm";
+
+  prefix "free5gc-udm";
+
+  import ietf-inet-types {
+    prefix inet;
+  }
+
+  import free5gc-types {
+    prefix free5gc;
+  }
+
+  grouping udm {
+    leaf name {
+      type string;
+    }
+    container sbi {
+      leaf scheme {
+        type enumeration {
+          enum http;
+          enum https;
+        }
+      }
+      leaf register-ipv4 {
+        type inet:ipv4-address;
+      }
+      leaf binding-ipv4 {
+        type inet:ipv4-address;
+      }
+      leaf port {
+        type uint16;
+      }
+      container tls {
+        leaf key {
+          type string;
+        }
+        leaf pem {
+          type string;
+        }
+      }
+    }
+    list service-name-list {
+      key "service-name";
+      leaf service-name {
+        type enumeration {
+          enum nudm-sdm;
+          enum nudm-uecm;
+          enum nudm-ueau;
+          enum nudm-ee;
+          enum nudm-pp;
+        }
+      }
+    }
+    leaf nrf-uri {
+      type string;
+    }
+    container keys {
+      leaf udm-profile-ahn-public-key {
+        type string;
+      }
+      leaf udm-profile-ahn-private-key {
+        type string;
+      }
+      leaf udm-profile-bhn-public-key {
+        type string;
+      }
+      leaf udm-profile-bhn-private-key {
+        type string;
+      }
+    }
+    container logger {
+      container udm {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container path-util {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container openapi {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+    }
+  }
+}
