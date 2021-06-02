@@ -24,6 +24,10 @@ module free5gc {
     prefix udm;
   }
 
+  import free5gc-udr {
+    prefix udr;
+  }
+
   import free5gc-ausf {
     prefix ausf;
   }
@@ -42,6 +46,10 @@ module free5gc {
 
   container udm {
     uses "udm:udm";
+  }
+
+  container udr {
+    uses "udr:udr";
   }
 
   container ausf {
