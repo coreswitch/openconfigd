@@ -1,0 +1,366 @@
+module free5gc-nssf {
+  namespace "http://free5gc.org/yang/free5gc-nssf";
+
+  prefix "free5gc-nssf";
+
+  import ietf-inet-types {
+    prefix inet;
+  }
+
+  import free5gc-types {
+    prefix free5gc;
+  }
+
+  grouping nssf {
+    leaf name {
+      type string;
+    }
+    container sbi {
+      leaf scheme {
+        type enumeration {
+          enum http;
+          enum https;
+        }
+      }
+      leaf register-ipv4 {
+        type inet:ipv4-address;
+      }
+      leaf binding-ipv4 {
+        type inet:ipv4-address;
+      }
+      leaf port {
+        type uint16;
+      }
+      container tls {
+        leaf key {
+          type string;
+        }
+        leaf pem {
+          type string;
+        }
+      }
+    }
+    list service-name-list {
+      key "service-name";
+      leaf service-name {
+        type enumeration {
+          enum nnssf-nsselection;
+          enum nnssf-nssaiavailability;
+        }
+      }
+    }
+
+    list supported-plmn-list {
+      key "name";
+      leaf name {
+        type string;
+      }
+      leaf mcc {
+        type string {
+          pattern '[0-9]{3}';
+        }
+      }
+      leaf mnc {
+        type string {
+          pattern '[0-9]{2,3}';
+        }
+      }
+    }
+
+    list supported-nssai-in-plmn-list {
+      key "name";
+      leaf name {
+        type string;
+      }
+      leaf mcc {
+        type string {
+          pattern '[0-9]{3}';
+        }
+      }
+      leaf mnc {
+        type string {
+          pattern '[0-9]{2,3}';
+        }
+      }
+      list supported-snssai-list {
+        key "name";
+        leaf name {
+          type string;
+        }
+        leaf sst {
+          type uint8;
+        }
+        leaf sd {
+          type string {
+            pattern '[0-9]{6}';
+          }
+        }
+      }
+    }
+    list nsi-list {
+      key "name";
+      leaf name {
+        type string;
+      }
+      leaf sst {
+        type uint8;
+      }
+      leaf sd {
+        type string {
+          pattern '[0-9]{6}';
+        }
+      }
+      list nsi-information-list {
+        key "name";
+        leaf name {
+          type string;
+        }
+        leaf nrfid {
+          type string;
+        }
+        leaf nsiid {
+          type uint32
+            }
+      }
+    }
+    list amf-set-list {
+      key "name";
+      leaf name {
+        type string;
+      }
+      leaf amf-setid {
+        type uint32;
+      }
+      list amf-list {
+        key "instance-id";
+        leaf instance-id {
+          type string;
+        }
+      }
+      leaf nrf-amf-set {
+        type string;
+      }
+      list supported-nssai-data {
+        key "tai";
+        leaf tai {
+          type string;
+        }
+        container plmnid {
+          leaf mcc {
+            type string {
+              pattern '[0-9]{3}';
+            }
+          }
+          leaf mnc {
+            type string {
+              pattern '[0-9]{2,3}';
+            }
+          }
+        }
+        leaf tac {
+          type uint32;
+        }
+        list supported-snssai-list {
+          key "name";
+          leaf name {
+            type string;
+          }
+          leaf sst {
+            type uint8;
+          }
+          leaf sd {
+            type string {
+              pattern '[0-9]{6}';
+            }
+          }
+        }
+      }
+    }
+    list amf-list {
+      key "name";
+      leaf name {
+        type string;
+      }
+      leaf nfid {
+        type string;
+      }
+      list supported-nssai-data {
+        key "tai";
+        leaf tai {
+          type string;
+        }
+        container plmnid {
+          leaf mcc {
+            type string {
+              pattern '[0-9]{3}';
+            }
+          }
+          leaf mnc {
+            type string {
+              pattern '[0-9]{2,3}';
+            }
+          }
+        }
+        leaf tac {
+          type uint32;
+        }
+        list supported-snssai-list {
+          key "name";
+          leaf name {
+            type string;
+          }
+          leaf sst {
+            type uint8;
+          }
+          leaf sd {
+            type string {
+              pattern '[0-9]{6}';
+            }
+          }
+        }
+      }
+    }
+    list ta-list {
+      key "name";
+      leaf name {
+        type string;
+      }
+      container plmnid {
+        leaf mcc {
+          type string {
+            pattern '[0-9]{3}';
+          }
+        }
+        leaf mnc {
+          type string {
+            pattern '[0-9]{2,3}';
+          }
+        }
+      }
+      leaf tac {
+        type uint32;
+      }
+      leaf access-type {
+        type enumeration {
+          enum 3GPP_ACCESS;
+        }
+      }
+      list supported-snssai-list {
+        key "name";
+        leaf name {
+          type string;
+        }
+        leaf sst {
+          type uint8;
+        }
+        leaf sd {
+          type string {
+            pattern '[0-9]{6}';
+          }
+        }
+      }
+      list restricted-snssai-list {
+        key "name";
+        leaf name {
+          type string;
+        }
+        container home-plmnid {
+          leaf mcc {
+            type string {
+              pattern '[0-9]{3}';
+            }
+          }
+          leaf mnc {
+            type string {
+              pattern '[0-9]{2,3}';
+            }
+          }
+        }
+        list snssai-list {
+          key "name";
+          leaf name {
+            type string;
+          }
+          leaf sst {
+            type uint8;
+          }
+          leaf sd {
+            type string {
+              pattern '[0-9]{6}';
+            }
+          }
+        }
+      }
+    }
+    list mapping-list-from-plmn {
+      key "operator-name";
+      leaf operator-name {
+        type string;
+      }
+      container home-plmnid {
+        leaf mcc {
+          type string {
+            pattern '[0-9]{3}';
+          }
+        }
+        leaf mnc {
+          type string {
+            pattern '[0-9]{2,3}';
+          }
+        }
+      }
+      list mapping-of-snssai {
+        key "name";
+        leaf name {
+          type string;
+        }
+        container serving-snssai {
+          leaf sst {
+            type uint8;
+          }
+          leaf sd {
+            type string {
+              pattern '[0-9]{6}';
+            }
+          }
+        }
+        container home-snssai {
+          leaf sst {
+            type uint8;
+          }
+          leaf sd {
+            type string {
+              pattern '[0-9]{6}';
+            }
+          }
+        }
+      }
+    }
+    container logger {
+      container nssf {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container path-util {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container openapi {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+    }
+  }
+}

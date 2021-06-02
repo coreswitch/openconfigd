@@ -20,6 +20,10 @@ module free5gc {
     prefix nrf;
   }
 
+  import free5gc-pcf {
+    prefix pcf;
+  }
+
   import free5gc-udm {
     prefix udm;
   }
@@ -30,6 +34,10 @@ module free5gc {
 
   import free5gc-ausf {
     prefix ausf;
+  }
+
+  import free5gc-nssf {
+    prefix nssf;
   }
 
   container amf {
@@ -44,6 +52,10 @@ module free5gc {
     uses "nrf:nrf";
   }
 
+  container pcf {
+    uses "pcf:pcf";
+  }
+
   container udm {
     uses "udm:udm";
   }
@@ -54,6 +66,10 @@ module free5gc {
 
   container ausf {
     uses "ausf:ausf";
+  }
+
+  container nssf {
+    uses "nssf:nssf";
   }
 
   container mongodb {

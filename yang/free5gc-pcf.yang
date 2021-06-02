@@ -1,0 +1,93 @@
+module free5gc-pcf {
+  namespace "http://free5gc.org/yang/free5gc-pcf";
+
+  prefix "free5gc-pcf";
+
+  import ietf-inet-types {
+    prefix inet;
+  }
+
+  import free5gc-types {
+    prefix free5gc;
+  }
+
+  grouping pcf {
+    leaf name {
+      type string;
+    }
+    container sbi {
+      leaf scheme {
+        type enumeration {
+          enum http;
+          enum https;
+        }
+      }
+      leaf register-ipv4 {
+        type inet:ipv4-address;
+      }
+      leaf binding-ipv4 {
+        type inet:ipv4-address;
+      }
+      leaf port {
+        type uint16;
+      }
+      container tls {
+        leaf key {
+          type string;
+        }
+        leaf pem {
+          type string;
+        }
+      }
+    }
+    list service-name-list {
+      key "service-name";
+      leaf service-name {
+        type enumeration {
+          enum npcf-eventexposure;
+          enum npcf-am-policy-control;
+          enum npcf-smpolicycontrol;
+          enum npcf-bdtpolicycontrol;
+          enum npcf-policyauthorization;
+          enum npcf-eventexposure;
+          enum npcf-ue-policy-control;
+        }
+      }
+      leaf supp-feat {
+        type string;
+      }
+    }
+    leaf time-format {
+      type string;
+    }
+    leaf default-bdt-refid {
+      type string;
+    }
+    container logger {
+      container pcf {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container path-util {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container openapi {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+    }
+  }
+}
