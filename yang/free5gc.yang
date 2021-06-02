@@ -16,6 +16,10 @@ module free5gc {
     prefix smf;
   }
 
+  import free5gc-nrf {
+    prefix nrf;
+  }
+
   import free5gc-ausf {
     prefix ausf;
   }
@@ -26,6 +30,10 @@ module free5gc {
 
   container smf {
     uses "smf:smf";
+  }
+
+  container nrf {
+    uses "nrf:nrf";
   }
 
   container ausf {

@@ -1,0 +1,106 @@
+module free5gc-nrf {
+  namespace "http://free5gc.org/yang/free5gc-nrf";
+
+  prefix "free5gc-nrf";
+
+  import ietf-inet-types {
+    prefix inet;
+  }
+
+  import free5gc-types {
+    prefix free5gc;
+  }
+
+  grouping nrf {
+    leaf name {
+      type string;
+    }
+    container sbi {
+      leaf scheme {
+        type enumeration {
+          enum http;
+          enum https;
+        }
+      }
+      leaf register-ipv4 {
+        type inet:ipv4-address;
+      }
+      leaf binding-ipv4 {
+        type inet:ipv4-address;
+      }
+      leaf port {
+        type uint16;
+      }
+      container tls {
+        leaf key {
+          type string;
+        }
+        leaf pem {
+          type string;
+        }
+      }
+    }
+    list service-name-list {
+      key "service-name";
+      leaf service-name {
+        type enumeration {
+          enum nnrf-nfm;
+          enum nnrf-disc;
+        }
+      }
+    }
+    leaf mongodb-name {
+      type string;
+    }
+    leaf mongodb-url {
+      type string;
+    }
+
+    container default-plmnid {
+      leaf mcc {
+        type string {
+          pattern '[0-9]{3}';
+        }
+      }
+      leaf mnc {
+        type string {
+          pattern '[0-9]{2,3}';
+        }
+      }
+    }
+    container logger {
+      container nrf {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container path-util {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container openapi {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+      container mongodb-library {
+        leaf debug-level {
+          type free5gc:debug-level;
+        }
+        leaf report-caller {
+          type boolean;
+        }
+      }
+    }
+  }
+}
