@@ -270,15 +270,7 @@ module free5gc-amf {
     container logger {
       container amf {
         leaf debug-level {
-          type enumeration {
-            enum trace;
-            enum debug;
-            enum info;
-            enum warn;
-            enum error;
-            enum fatal;
-            enum panic;
-          }
+          type free5gc:debug-level;
         }
         leaf report-caller {
           type boolean;
