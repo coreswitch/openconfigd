@@ -138,9 +138,6 @@ module free5gc-amf {
         type string;
       }
     }
-    leaf nrf-uri {
-      type string;
-    }
     container security {
       leaf-list integrity-order {
         type enumeration {

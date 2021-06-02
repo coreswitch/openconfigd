@@ -160,9 +160,6 @@ module free5gc-smf {
         }
       }
     }
-    leaf nrf-uri {
-      type string;
-    }
     leaf ulcl {
       type boolean;
     }

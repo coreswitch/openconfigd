@@ -52,9 +52,6 @@ module free5gc-udm {
         }
       }
     }
-    leaf nrf-uri {
-      type string;
-    }
     container keys {
       leaf udm-profile-ahn-public-key {
         type string;

@@ -49,14 +49,6 @@ module free5gc-nrf {
         }
       }
     }
-    container mongodb {
-      leaf name {
-        type string;
-      }
-      leaf url {
-        type string;
-      }
-    }
     container default-plmnid {
       leaf mcc {
         type string {

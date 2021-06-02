@@ -66,9 +66,6 @@ module free5gc-ausf {
         }
       }
     }
-    leaf nrf-uri {
-      type string;
-    }
     leaf groupid {
       type string;
     }

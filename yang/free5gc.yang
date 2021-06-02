@@ -56,6 +56,18 @@ module free5gc {
     uses "ausf:ausf";
   }
 
+  container mongodb {
+    leaf name {
+      type string;
+    }
+    leaf url {
+      type string;
+    }
+  }
+  leaf nrf-uri {
+    type string;
+  }
+
   container system {
     description
       "System group configuration.";
