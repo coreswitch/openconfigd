@@ -37,6 +37,14 @@ module free5gc-amf {
       leaf port {
         type uint16;
       }
+      container tls {
+        leaf key {
+          type string;
+        }
+        leaf pem {
+          type string;
+        }
+      }
     }
     list service-name-list {
       key "service-name";
