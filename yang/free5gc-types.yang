@@ -3,6 +3,34 @@ module free5gc-types {
 
   prefix "free5gc-types";
 
+  typedef mcc {
+    type string {
+      pattern '[0-9]{3}';
+    }
+    description "Mobile Country Code (3 digits string, digit: 0~9)";
+  }
+
+  typedef mnc {
+    type string {
+      pattern '[0-9]{2,3}';
+    }
+    description "Mobile Network Code (2 or 3 digits string, digit: 0~9)";
+  }
+
+  typedef sst {
+    type uint8 {
+      range "0 .. 255";
+    }
+    description "Slice/Service Type (uinteger, range: 0~255)";
+  }
+
+  typedef sd {
+    type string {
+      pattern '[0-9a-fA-F]{6}';
+    }
+    description "Slice Differentiator (3 bytes hex string, range: 000000~FFFFFF)";
+  }
+
   typedef debug-level {
     type enumeration {
       enum trace;
