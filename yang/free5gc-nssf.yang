@@ -16,29 +16,7 @@ module free5gc-nssf {
       type string;
     }
     container sbi {
-      leaf scheme {
-        type enumeration {
-          enum http;
-          enum https;
-        }
-      }
-      leaf register-ipv4 {
-        type inet:ipv4-address;
-      }
-      leaf binding-ipv4 {
-        type inet:ipv4-address;
-      }
-      leaf port {
-        type uint16;
-      }
-      container tls {
-        leaf key {
-          type string;
-        }
-        leaf pem {
-          type string;
-        }
-      }
+      uses free5gc:sbi;
     }
     list service-name-list {
       key "service-name";

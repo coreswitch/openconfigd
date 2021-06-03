@@ -3,6 +3,10 @@ module free5gc-types {
 
   prefix "free5gc-types";
 
+  import ietf-inet-types {
+    prefix inet;
+  }
+
   typedef mcc {
     type string {
       pattern '[0-9]{3}';
@@ -40,6 +44,33 @@ module free5gc-types {
       enum error;
       enum fatal;
       enum panic;
+    }
+  }
+
+  grouping sbi {
+    description "Service-based interface information";
+    leaf scheme {
+      type enumeration {
+        enum http;
+        enum https;
+      }
+    }
+    leaf register-ipv4 {
+      type inet:ipv4-address;
+    }
+    leaf binding-ipv4 {
+      type inet:ipv4-address;
+    }
+    leaf port {
+      type uint16;
+    }
+    container tls {
+      leaf key {
+        type string;
+      }
+      leaf pem {
+        type string;
+      }
     }
   }
 
