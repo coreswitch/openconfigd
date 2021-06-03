@@ -42,4 +42,14 @@ module free5gc-types {
       enum panic;
     }
   }
+
+  grouping logger {
+    description "Logger behavior";
+    leaf debug-level {
+      type debug-level;
+    }
+    leaf report-caller {
+      type boolean;
+    }
+  }
 }

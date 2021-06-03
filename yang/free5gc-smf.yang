@@ -161,52 +161,22 @@ module free5gc-smf {
     }
     container logger {
       container smf {
-        leaf debug-level {
-          type free5gc:debug-level;
-        }
-        leaf report-caller {
-          type boolean;
-        }
+        uses free5gc:logger;
       }
       container nas {
-        leaf debug-level {
-          type free5gc:debug-level;
-        }
-        leaf report-caller {
-          type boolean;
-        }
+        uses free5gc:logger;
       }
       container ngap {
-        leaf debug-level {
-          type free5gc:debug-level;
-        }
-        leaf report-caller {
-          type boolean;
-        }
+        uses free5gc:logger;
       }
       container aper {
-        leaf debug-level {
-          type free5gc:debug-level;
-        }
-        leaf report-caller {
-          type boolean;
-        }
+        uses free5gc:logger;
       }
       container path-util {
-        leaf debug-level {
-          type free5gc:debug-level;
-        }
-        leaf report-caller {
-          type boolean;
-        }
+        uses free5gc:logger;
       }
       container openapi {
-        leaf debug-level {
-          type free5gc:debug-level;
-        }
-        leaf report-caller {
-          type boolean;
-        }
+        uses free5gc:logger;
       }
     }
   }

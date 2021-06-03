@@ -294,28 +294,13 @@ module free5gc-nssf {
     }
     container logger {
       container nssf {
-        leaf debug-level {
-          type free5gc:debug-level;
-        }
-        leaf report-caller {
-          type boolean;
-        }
+        uses free5gc:logger;
       }
       container path-util {
-        leaf debug-level {
-          type free5gc:debug-level;
-        }
-        leaf report-caller {
-          type boolean;
-        }
+        uses free5gc:logger;
       }
       container openapi {
-        leaf debug-level {
-          type free5gc:debug-level;
-        }
-        leaf report-caller {
-          type boolean;
-        }
+        uses free5gc:logger;
       }
     }
   }

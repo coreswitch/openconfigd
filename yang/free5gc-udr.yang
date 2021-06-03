@@ -42,36 +42,16 @@ module free5gc-udr {
     }
     container logger {
       container udr {
-        leaf debug-level {
-          type free5gc:debug-level;
-        }
-        leaf report-caller {
-          type boolean;
-        }
+        uses free5gc:logger;
       }
       container path-util {
-        leaf debug-level {
-          type free5gc:debug-level;
-        }
-        leaf report-caller {
-          type boolean;
-        }
+        uses free5gc:logger;
       }
       container openapi {
-        leaf debug-level {
-          type free5gc:debug-level;
-        }
-        leaf report-caller {
-          type boolean;
-        }
+        uses free5gc:logger;
       }
       container mongodb-library {
-        leaf debug-level {
-          type free5gc:debug-level;
-        }
-        leaf report-caller {
-          type boolean;
-        }
+        uses free5gc:logger;
       }
     }
   }
