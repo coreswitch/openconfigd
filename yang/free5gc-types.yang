@@ -47,6 +47,15 @@ module free5gc-types {
     }
   }
 
+  grouping plmnid {
+    leaf mcc {
+      type mcc;
+    }
+    leaf mnc {
+      type mnc;
+    }
+  }
+
   grouping sbi {
     description "Service-based interface information";
     leaf scheme {

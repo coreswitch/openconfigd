@@ -112,12 +112,7 @@ module free5gc-nssf {
           type string;
         }
         container plmnid {
-          leaf mcc {
-            type free5gc:mcc;
-          }
-          leaf mnc {
-            type free5gc:mnc;
-          }
+          uses free5gc:plmnid;
         }
         leaf tac {
           type uint32;
@@ -150,12 +145,7 @@ module free5gc-nssf {
           type string;
         }
         container plmnid {
-          leaf mcc {
-            type free5gc:mcc;
-          }
-          leaf mnc {
-            type free5gc:mnc;
-          }
+          uses free5gc:plmnid;
         }
         leaf tac {
           type uint32;
@@ -180,12 +170,7 @@ module free5gc-nssf {
         type string;
       }
       container plmnid {
-        leaf mcc {
-          type free5gc:mcc;
-        }
-        leaf mnc {
-          type free5gc:mnc;
-        }
+        uses free5gc:plmnid;
       }
       leaf tac {
         type uint32;
@@ -213,12 +198,7 @@ module free5gc-nssf {
           type string;
         }
         container home-plmnid {
-          leaf mcc {
-            type free5gc:mcc;
-          }
-          leaf mnc {
-            type free5gc:mnc;
-          }
+          uses free5gc:plmnid;
         }
         list snssai-list {
           key "name";
@@ -240,12 +220,7 @@ module free5gc-nssf {
         type string;
       }
       container home-plmnid {
-        leaf mcc {
-          type free5gc:mcc;
-        }
-        leaf mnc {
-          type free5gc:mnc;
-        }
+        uses free5gc:plmnid;
       }
       list mapping-of-snssai {
         key "name";

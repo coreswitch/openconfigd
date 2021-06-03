@@ -42,12 +42,7 @@ module free5gc-amf {
         type string;
       }
       container plmnid {
-        leaf mcc {
-          type free5gc:mcc;
-        }
-        leaf mnc {
-          type free5gc:mnc;
-        }
+        uses free5gc:plmnid;
       }
       leaf amfid {
         type string;
@@ -59,12 +54,7 @@ module free5gc-amf {
         type string;
       }
       container plmnid {
-        leaf mcc {
-          type free5gc:mcc;
-        }
-        leaf mnc {
-          type free5gc:mnc;
-        }
+        uses free5gc:plmnid;
       }
       leaf tac {
         type uint32;
@@ -76,12 +66,7 @@ module free5gc-amf {
         type string;
       }
       container plmnid {
-        leaf mcc {
-          type free5gc:mcc;
-        }
-        leaf mnc {
-          type free5gc:mnc;
-        }
+        uses free5gc:plmnid;
       }
       list snssai-list {
         key "name";

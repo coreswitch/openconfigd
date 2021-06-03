@@ -32,12 +32,7 @@ module free5gc-ausf {
         type string;
       }
       container plmnid {
-        leaf mcc {
-          type free5gc:mcc;
-        }
-        leaf mnc {
-          type free5gc:mnc;
-        }
+        uses free5gc:plmnid;
       }
     }
     leaf groupid {

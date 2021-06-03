@@ -28,12 +28,7 @@ module free5gc-nrf {
       }
     }
     container default-plmnid {
-      leaf mcc {
-        type free5gc:mcc;
-      }
-      leaf mnc {
-        type free5gc:mnc;
-      }
+      uses free5gc:plmnid;
     }
     container logger {
       container nrf {
