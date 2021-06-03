@@ -51,14 +51,10 @@ module free5gc-nrf {
     }
     container default-plmnid {
       leaf mcc {
-        type string {
-          pattern '[0-9]{3}';
-        }
+        type free5gc:mcc;
       }
       leaf mnc {
-        type string {
-          pattern '[0-9]{2,3}';
-        }
+        type free5gc:mnc;
       }
     }
     container logger {

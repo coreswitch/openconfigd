@@ -57,12 +57,10 @@ module free5gc-smf {
         type string;
       }
       leaf sst {
-        type uint8;
+        type free5gc:sst;
       }
       leaf sd {
-        type string {
-          pattern '[0-9]{6}';
-        }
+        type free5gc:sd;
       }
       list dnn {
         key "name";
@@ -105,12 +103,10 @@ module free5gc-smf {
             type string;
           }
           leaf sst {
-            type uint8;
+            type free5gc:sst;
           }
           leaf sd {
-            type string {
-              pattern '[0-9]{6}';
-            }
+            type free5gc:sd;
           }
           list dnn {
             key "name";
