@@ -35,6 +35,13 @@ module free5gc-types {
     description "Slice Differentiator (3 bytes hex string, range: 000000~FFFFFF)";
   }
 
+  typedef host-uri {
+    type string {
+      pattern '[a-z]+://([^/:?#]+)(:[0-9]{1,5})?';
+    }
+    description "Simplified host URI with scheme, host, port";
+  }
+
   typedef debug-level {
     type enumeration {
       enum trace;

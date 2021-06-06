@@ -72,9 +72,14 @@ module free5gc-smf {
           }
         }
         leaf node-id {
-          type inet:ipv4-address;          
+          type inet:ipv4-address;
         }
-
+        leaf an-ip {
+          type string;
+        }
+        leaf dnn {
+          type string;
+        }
         list snssai {
           key "name";
           leaf name {
@@ -95,6 +100,18 @@ module free5gc-smf {
               key "cidr";
               leaf cidr {
                 type inet:ipv4-prefix;
+              }
+            }
+            list dnai-list {
+              key "name";
+              leaf name {
+                type string;
+              }
+            }
+            list pdu-session-types {
+              key "name";
+              leaf name {
+                type string;
               }
             }
           }

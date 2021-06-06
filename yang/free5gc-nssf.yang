@@ -85,7 +85,7 @@ module free5gc-nssf {
           type string;
         }
         leaf nsiid {
-          type uint32;
+          type string;
         }
       }
     }
@@ -178,6 +178,7 @@ module free5gc-nssf {
       leaf access-type {
         type enumeration {
           enum 3GPP_ACCESS;
+          enum NON_3GPP_ACCESS;
         }
       }
       list supported-snssai-list {

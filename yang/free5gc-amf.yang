@@ -57,7 +57,8 @@ module free5gc-amf {
         uses free5gc:plmnid;
       }
       leaf tac {
-        type uint32;
+        // TS 38.413 9.3.3.10 OCTET STRING (SIZE(3))
+        type string;
       }
     }
     list plmn-support-list {
