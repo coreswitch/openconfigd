@@ -97,8 +97,8 @@ module free5gc-amf {
       }
       leaf-list ciphering-order {
         type enumeration {
-          enum NIA2;
-          enum NIA0;
+          enum NEA2;
+          enum NEA0;
         }
       }
     }
