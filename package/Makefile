@@ -18,7 +18,8 @@ BUILD_DIR:=$(OUT_DIR)/build
 
 .PHONY: package stage clean files
 
-package: $(OUT_DIR)/timestamp.deb $(OUT_DIR)/timestamp.rpm
+# package: $(OUT_DIR)/timestamp.deb $(OUT_DIR)/timestamp.rpm
+package: $(OUT_DIR)/timestamp.deb
 
 $(OUT_DIR)/timestamp.deb: stage
 	@echo "Creating package"
