@@ -61,7 +61,7 @@ $(OUT_DIR)/timestamp.rpm: stage
 	-t rpm .
 	touch $(OUT_DIR)/timestamp.rpm
 
-stage: files openconfigd cli
+stage: files openconfigd
 
 files: $(STAGING_DIR) $(STAGING_DIR)/etc $(STAGING_DIR)/etc/openconfigd
 	rsync -avz ./files/ubuntu/ $(STAGING_DIR)/
@@ -73,9 +73,10 @@ openconfigd: $(STAGING_DIR)/usr/bin
 	go get github.com/coreswitch/openconfigd/cli_command
 	cp $(GOPATH)/bin/openconfigd $(STAGING_DIR)/usr/bin
 	cp $(GOPATH)/bin/cli_command $(STAGING_DIR)/usr/bin
+	cp ../cli/cli $(STAGING_DIR)/usr/bin
 
-cli: $(BUILD_DIR) $(STAGING_DIR)/usr/bin
-	(cd $(BUILD_DIR); ../../../cli/configure; make; cp cli ../../$(STAGING_DIR)/usr/bin)
+# cli: $(BUILD_DIR) $(STAGING_DIR)/usr/bin
+# 	(cd $(BUILD_DIR); ../../../cli/configure; make; cp cli ../../$(STAGING_DIR)/usr/bin)
 
 $(STAGING_DIR):
 	mkdir -p $(STAGING_DIR)
