@@ -40,6 +40,10 @@ module free5gc {
     prefix nssf;
   }
 
+  import free5gc-sepp {
+    prefix sepp;
+  }
+
   container amf {
     uses "amf:amf";
   }
@@ -70,6 +74,10 @@ module free5gc {
 
   container nssf {
     uses "nssf:nssf";
+  }
+
+  container sepp {
+    uses "sepp:sepp";
   }
 
   container mongodb {

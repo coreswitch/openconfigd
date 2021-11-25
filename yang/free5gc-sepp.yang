@@ -1,0 +1,51 @@
+module free5gc-sepp {
+  namespace "http://free5gc.org/yang/free5gc-amf";
+
+  prefix "free5gc-sepp";
+
+  import ietf-inet-types {
+    prefix inet;
+  }
+
+  import free5gc-types {
+    prefix free5gc;
+  }
+
+  grouping sepp {
+    leaf local-url {
+      type string;
+    }
+    list remote {
+      key "name";
+      leaf name {
+        type string;
+      }
+      container plmnid {
+        uses free5gc:plmnid;
+      }
+      leaf url {
+        type string;
+      }
+    }
+    leaf sbi-url {
+      type string;
+    }
+    leaf nrf-url {
+      type string;
+    }
+    leaf retry-interval {
+      type uint32;
+    }
+    leaf retry-max-count {
+      type uint32;
+    }
+    leaf disable-server {
+      type empty;
+    }
+    container logger {
+      container sepp {
+        uses free5gc:logger;
+      }
+    }
+  }
+}
