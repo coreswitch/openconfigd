@@ -47,5 +47,12 @@ module free5gc-sepp {
         uses free5gc:logger;
       }
     }
+    container sbi {
+      leaf nrf-url {
+        type string;
+      }
+      container plmnid {
+        uses free5gc:plmnid;
+      }
   }
 }

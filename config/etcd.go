@@ -60,7 +60,7 @@ var (
 
 	etcdWatchHandler         *EtcdWatcher
 	etcdWatchContextCanceler func()
-	etcdWatchWg sync.WaitGroup
+	etcdWatchWg              sync.WaitGroup
 )
 
 const (

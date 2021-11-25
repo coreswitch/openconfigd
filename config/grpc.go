@@ -97,9 +97,11 @@ func execute(Cmd *cmd.Cmd, mode string, args []string, line string, reply *rpc.E
 				} else {
 					reply.Code = rpc.ExecCode_REDIRECT
 				}
-				pair := strings.Split(instStr, ":")
-				host := pair[0]
-				port, _ := strconv.ParseUint(pair[1], 10, 32)
+				// pair := strings.Split(instStr, ":")
+				// host := pair[0]
+				// port, _ := strconv.ParseUint(pair[1], 10, 32)
+				host := "localhost"
+				port := 2701
 				reply.Host = host
 				reply.Port = uint32(port)
 				ret = "SuccessRedirect\n"
