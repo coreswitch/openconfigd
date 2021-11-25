@@ -54,5 +54,6 @@ module free5gc-sepp {
       container plmnid {
         uses free5gc:plmnid;
       }
+    }
   }
 }
