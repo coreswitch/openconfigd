@@ -27,9 +27,6 @@ module free5gc-sepp {
         type string;
       }
     }
-    leaf sbi-url {
-      type string;
-    }
     leaf nrf-url {
       type string;
     }
