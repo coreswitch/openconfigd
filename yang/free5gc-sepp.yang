@@ -12,8 +12,13 @@ module free5gc-sepp {
   }
 
   grouping sepp {
-    leaf local-url {
-      type string;
+    container local {
+      leaf url {
+        type string;
+      }
+      container plmnid {
+        uses free5gc:plmnid;
+      }
     }
     list remote {
       key "name";
@@ -27,26 +32,29 @@ module free5gc-sepp {
         type string;
       }
     }
-    leaf retry-interval {
-      type uint32;
-    }
-    leaf retry-max-count {
-      type uint32;
-    }
-    leaf disable-server {
-      type empty;
-    }
-    container logger {
-      container sepp {
-        uses free5gc:logger;
-      }
-    }
     container sbi {
       leaf nrf-url {
         type string;
       }
       container plmnid {
         uses free5gc:plmnid;
+      }
+    }
+    leaf disable-client {
+      type empty;
+    }
+    leaf disable-server {
+      type empty;
+    }
+    leaf retry-interval {
+      type uint32;
+    }
+    leaf retry-max-count {
+      type uint32;
+    }
+    container logger {
+      container sepp {
+        uses free5gc:logger;
       }
     }
   }
