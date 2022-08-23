@@ -230,12 +230,6 @@ module free5gc-amf {
       container aper {
         uses free5gc:logger;
       }
-      container path-util {
-        uses free5gc:logger;
-      }
-      container openapi {
-        uses free5gc:logger;
-      }
     }
   }
 }
