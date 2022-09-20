@@ -114,6 +114,11 @@ module free5gc-amf {
       leaf enable {
         type boolean;
       }
+      leaf length {
+        type uint8 {
+          range 1..3;
+        }
+      }
       leaf ims-vops {
         type uint8 {
             range 0..1;
@@ -204,6 +209,17 @@ module free5gc-amf {
       }
     }
     container t3565 {
+      leaf enable {
+        type boolean;
+      }
+      leaf expire-time {
+        type uint32;
+      }
+      leaf max-retry-times {
+        type uint32;
+      }
+    }
+    container t3570 {
       leaf enable {
         type boolean;
       }
