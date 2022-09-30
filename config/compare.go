@@ -25,7 +25,7 @@ func Compare() string {
 	configCandidate.WriteTo("/tmp/config.2")
 
 	var config string
-	out, err := exec.Command("diff", "-U", "-1", "/tmp/config.1", "/tmp/config.2").Output()
+	out, err := exec.Command("diff", "-U", "65535", "/tmp/config.1", "/tmp/config.2").Output()
 	if err != nil {
 		lines := bytes.Split(out, []byte{'\n'})
 		if len(lines) > 3 {
@@ -54,7 +54,7 @@ func CompareCommand() string {
 	configCandidate.WriteCommandTo("/tmp/config.2")
 
 	var config string
-	out, err := exec.Command("diff", "-U", "-1", "/tmp/config.1", "/tmp/config.2").Output()
+	out, err := exec.Command("diff", "-U", "65535", "/tmp/config.1", "/tmp/config.2").Output()
 	if err != nil {
 		lines := bytes.Split(out, []byte{'\n'})
 		if len(lines) > 3 {
